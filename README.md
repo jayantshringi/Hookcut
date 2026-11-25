@@ -134,7 +134,7 @@ See [`docs/MODELS.md`](./docs/MODELS.md) for every model ID, runtime, size, and 
 ## Contributing & Support
 
 Contributions are welcome! Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) before opening a PR.
-If Hookcut saves you time or money, consider supporting development via [Ko-fi](https://ko-fi.com/hookcut) or [GitHub Sponsors](https://github.com/jayantshringi).
+If Hookcut saves you time or money, consider supporting development via [GitHub Sponsors](https://github.com/sponsors/jayantshringi).
 
 ## License
 

@@ -140,13 +140,10 @@ describe('UI components', () => {
     expect(onThumb).toHaveBeenCalledWith(clip);
   });
 
-  it('Footer links Ko-fi / GitHub Sponsors and LegalModal enforces ownership terms', () => {
+  it('Footer links GitHub Sponsors and LegalModal enforces ownership terms', () => {
     const onOpenLegal = vi.fn();
     render(<Footer onOpenLegal={onOpenLegal} />);
-    expect(screen.getByRole('link', { name: /Ko-fi/i })).toHaveAttribute(
-      'href',
-      expect.stringContaining('ko-fi.com'),
-    );
+    expect(screen.queryByRole('link', { name: /Ko-fi/i })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /GitHub Sponsors/i })).toHaveAttribute(
       'href',
       expect.stringContaining('github.com/sponsors'),

@@ -1,4 +1,4 @@
-import { Coffee, Heart, ShieldCheck } from 'lucide-react';
+import { Heart, ShieldCheck } from 'lucide-react';
 
 interface FooterProps {
   onOpenLegal: (tab: 'privacy' | 'terms') => void;
@@ -31,15 +31,6 @@ export function Footer({ onOpenLegal }: FooterProps) {
           >
             Terms (Rights Required)
           </button>
-          <a
-            href="https://ko-fi.com/hookcut"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 rounded-lg border border-amber-500/35 bg-amber-500/10 px-2.5 py-1 text-amber-300 hover:bg-amber-500/20 transition-colors"
-          >
-            <Coffee className="h-3.5 w-3.5" />
-            Ko-fi
-          </a>
           <a
             href="https://github.com/sponsors/jayantshringi"
             target="_blank"
