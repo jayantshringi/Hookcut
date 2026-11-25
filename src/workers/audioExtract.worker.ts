@@ -138,52 +138,66 @@ self.onmessage = async (event: MessageEvent<AudioExtractWorkerRequest>) => {
 
     let lastProgressReport = 0;
 
-    for await (const sample of sink.samples()) {
+    try {
+      for await (const sample of sink.samples()) {
+        if (cancelled) {
+          sample.close();
+          post({ type: 'CANCELLED' });
+          return;
+        }
+
+        try {
+          const sizeBytes = sample.allocationSize({ format: 'f32', planeIndex: 0 });
+          const buffer = new ArrayBuffer(sizeBytes);
+          sample.copyTo(buffer, { format: 'f32', planeIndex: 0 });
+          const interleaved = new Float32Array(buffer);
+
+          const mono16k = downmixAndResampleToMono(
+            interleaved,
+            sample.sampleRate,
+            sample.numberOfChannels,
+            TARGET_ASR_SAMPLE_RATE,
+          );
+
+          const readyEnergyBins = energyAccumulator.push(mono16k);
+          for (const binChunk of readyEnergyBins) {
+            const [rms] = computeRmsEnergyBins(binChunk.samples, TARGET_ASR_SAMPLE_RATE, ENERGY_BIN_SEC);
+            energyBins.push(rms ?? 0);
+          }
+
+          const readyChunks = chunker.push(mono16k);
+          for (const chunk of readyChunks) {
+            post({ type: 'CHUNK', chunk }, [chunk.samples.buffer]);
+          }
+
+          const processedSec = Math.min(durationSec, sample.timestamp + sample.duration);
+          const now = performance.now();
+          if (now - lastProgressReport > 120) {
+            lastProgressReport = now;
+            post({
+              type: 'PROGRESS',
+              stage: 'extracting',
+              progress: durationSec > 0 ? Math.min(0.99, processedSec / durationSec) : 0.5,
+              processedSec,
+              totalSec: durationSec,
+            });
+          }
+        } finally {
+          sample.close();
+        }
+      }
+    } catch (decodeErr) {
       if (cancelled) {
-        sample.close();
         post({ type: 'CANCELLED' });
         return;
       }
-
-      try {
-        const sizeBytes = sample.allocationSize({ format: 'f32', planeIndex: 0 });
-        const buffer = new ArrayBuffer(sizeBytes);
-        sample.copyTo(buffer, { format: 'f32', planeIndex: 0 });
-        const interleaved = new Float32Array(buffer);
-
-        const mono16k = downmixAndResampleToMono(
-          interleaved,
-          sample.sampleRate,
-          sample.numberOfChannels,
-          TARGET_ASR_SAMPLE_RATE,
-        );
-
-        const readyEnergyBins = energyAccumulator.push(mono16k);
-        for (const binChunk of readyEnergyBins) {
-          const [rms] = computeRmsEnergyBins(binChunk.samples, TARGET_ASR_SAMPLE_RATE, ENERGY_BIN_SEC);
-          energyBins.push(rms ?? 0);
-        }
-
-        const readyChunks = chunker.push(mono16k);
-        for (const chunk of readyChunks) {
-          post({ type: 'CHUNK', chunk }, [chunk.samples.buffer]);
-        }
-
-        const processedSec = Math.min(durationSec, sample.timestamp + sample.duration);
-        const now = performance.now();
-        if (now - lastProgressReport > 120) {
-          lastProgressReport = now;
-          post({
-            type: 'PROGRESS',
-            stage: 'extracting',
-            progress: durationSec > 0 ? Math.min(0.99, processedSec / durationSec) : 0.5,
-            processedSec,
-            totalSec: durationSec,
-          });
-        }
-      } finally {
-        sample.close();
-      }
+      const reason = decodeErr instanceof Error ? decodeErr.message : String(decodeErr);
+      post({
+        type: 'FALLBACK_REQUIRED',
+        metadata,
+        reason: `WebCodecs audio decode failed (${reason}).`,
+      });
+      return;
     }
 
     if (cancelled) {

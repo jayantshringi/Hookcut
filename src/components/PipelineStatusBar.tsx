@@ -17,6 +17,7 @@ const STEPS: Array<{ id: PipelineStage; label: string }> = [
 
 const STAGE_ORDER: Record<PipelineStage, number> = {
   idle: -1,
+  fetching: -1,
   extracting: 0,
   transcribing: 1,
   scoring: 2,
@@ -30,6 +31,7 @@ export function PipelineStatusBar({ state, onCancel, onRetry }: PipelineStatusBa
   if (state.stage === 'idle') return null;
 
   const isRunning =
+    state.stage === 'fetching' ||
     state.stage === 'extracting' ||
     state.stage === 'transcribing' ||
     state.stage === 'scoring' ||
@@ -62,6 +64,13 @@ export function PipelineStatusBar({ state, onCancel, onRetry }: PipelineStatusBa
             <p className="text-xs sm:text-sm font-medium text-zinc-100">{state.stageLabel}</p>
             {state.errorMessage && (
               <p className="text-xs text-rose-300 mt-0.5">{state.errorMessage}</p>
+            )}
+            {state.bridgeSetupUrl && (
+              <div className="mt-2 rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-[11px] text-zinc-300 space-y-1">
+                <p>
+                  Run <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-amber-300">npm run yt-bridge</code> locally (requires <code className="rounded bg-zinc-800 px-1 py-0.5">yt-dlp</code>), or configure a remote bridge URL under <strong>YouTube / Video URL → Bridge settings</strong>, then click <strong>Retry</strong>.
+                </p>
+              </div>
             )}
           </div>
         </div>

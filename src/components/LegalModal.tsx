@@ -69,9 +69,12 @@ export function LegalModal({ openTab, onClose, onSwitchTab }: LegalModalProps) {
         {openTab === 'privacy' ? (
           <div className="space-y-3 text-xs text-zinc-300 leading-relaxed">
             <p>
-              <strong>Zero server uploads:</strong> Hookcut runs entirely inside your browser.
-              Your video and audio files are never uploaded, transmitted, or stored on any remote
-              server.
+              <strong>On-device AI &amp; video editing:</strong> Local video files never leave your
+              machine. All transcription, highlight scoring, face tracking, caption rendering, and
+              MP4 export execute inside your browser. If you paste a direct video URL or YouTube
+              link, the media is fetched into your browser via the direct URL, the optional{' '}
+              <code>/api/proxy</code> CORS relay (for non-YouTube URLs), or your configured{' '}
+              <code>yt-dlp</code> bridge.
             </p>
             <p>
               <strong>On-device caching:</strong> AI model weights (Whisper, Qwen/SmolLM, MediaPipe)
@@ -96,9 +99,9 @@ export function LegalModal({ openTab, onClose, onSwitchTab }: LegalModalProps) {
         ) : (
           <div className="space-y-3 text-xs text-zinc-300 leading-relaxed">
             <p>
-              <strong>Content Ownership &amp; Rights:</strong> You may only use Hookcut on videos
-              that you own or for which you hold full copyright, license, or explicit permission to
-              clip, caption, and distribute.
+              <strong>Content Ownership &amp; Rights:</strong> You may only use Hookcut on local
+              videos or URLs/YouTube links that you own or for which you hold full copyright,
+              license, or explicit permission to clip, caption, and distribute.
             </p>
             <p>
               <strong>Local Processing Responsibility:</strong> Because all processing occurs on your

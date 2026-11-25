@@ -108,6 +108,88 @@ export interface ScoreCandidatesOptions {
 }
 
 /**
+ * Splits any segment longer than `maxSegmentSec` along word boundaries so
+ * unpunctuated monologues can still form valid 20-60s highlight windows.
+ */
+function splitOversizedSegments(
+  segments: TranscriptSegment[],
+  maxSegmentSec: number,
+  targetSplitSec = 35,
+): TranscriptSegment[] {
+  const result: TranscriptSegment[] = [];
+  for (const seg of segments) {
+    if (seg.end - seg.start <= maxSegmentSec || seg.words.length < 2) {
+      result.push(seg);
+      continue;
+    }
+
+    let bucket: typeof seg.words = [];
+    for (const w of seg.words) {
+      bucket.push(w);
+      const span = w.end - bucket[0]!.start;
+      if (span >= targetSplitSec && bucket.length >= 2) {
+        result.push({
+          id: result.length,
+          start: bucket[0]!.start,
+          end: w.end,
+          text: bucket.map((item) => item.text).join(' '),
+          words: bucket,
+        });
+        bucket = [];
+      }
+    }
+    if (bucket.length > 0) {
+      result.push({
+        id: result.length,
+        start: bucket[0]!.start,
+        end: bucket[bucket.length - 1]!.end,
+        text: bucket.map((item) => item.text).join(' '),
+        words: bucket,
+      });
+    }
+  }
+  return result.map((s, id) => ({ ...s, id }));
+}
+
+function findPeakEnergyWindow(
+  durationSec: number,
+  energyProfile?: EnergyProfile,
+  targetDurationSec = 35,
+): { start: number; end: number } {
+  const safeDuration = Math.max(0.5, durationSec);
+  const clipLen = Math.min(safeDuration, targetDurationSec);
+  if (!energyProfile || energyProfile.bins.length === 0 || energyProfile.binSec <= 0) {
+    return { start: 0, end: Math.round(clipLen * 100) / 100 };
+  }
+
+  const windowBins = Math.max(1, Math.round(clipLen / energyProfile.binSec));
+  if (windowBins >= energyProfile.bins.length) {
+    return { start: 0, end: Math.round(clipLen * 100) / 100 };
+  }
+
+  let runningSum = 0;
+  for (let i = 0; i < windowBins; i++) {
+    runningSum += energyProfile.bins[i] ?? 0;
+  }
+  let bestStartBin = 0;
+  let bestSum = runningSum;
+  for (let i = windowBins; i < energyProfile.bins.length; i++) {
+    runningSum += (energyProfile.bins[i] ?? 0) - (energyProfile.bins[i - windowBins] ?? 0);
+    if (runningSum > bestSum) {
+      bestSum = runningSum;
+      bestStartBin = i - windowBins + 1;
+    }
+  }
+
+  const start = Math.max(0, Math.min(safeDuration - clipLen, bestStartBin * energyProfile.binSec));
+  const end = Math.min(safeDuration, start + clipLen);
+  return {
+    start: Math.round(start * 100) / 100,
+    end: Math.round(end * 100) / 100,
+  };
+}
+
+/**
  * Scores sentence-aligned sliding windows, applies penalties, deduplicates overlapping spans,
  * and returns the top candidatesToRerank candidates.
  */
@@ -121,23 +203,66 @@ export function scoreTranscriptCandidates(
 
   let windows = generateSlidingWindows(transcript, config);
 
-  if (
-    windows.length === 0 &&
-    allowShortFallback &&
-    transcript.segments.length > 0 &&
-    transcript.durationSec < config.penalties.durationHardMin
-  ) {
-    const first = transcript.segments[0]!;
-    const last = transcript.segments[transcript.segments.length - 1]!;
-    windows = [
-      {
-        startSegmentIdx: 0,
-        endSegmentIdx: transcript.segments.length - 1,
-        start: first.start,
-        end: last.end,
-        segments: transcript.segments,
-      },
-    ];
+  if (windows.length === 0 && allowShortFallback) {
+    if (transcript.segments.length > 0) {
+      const normalizedSegments = splitOversizedSegments(
+        transcript.segments,
+        config.penalties.durationHardMax,
+      );
+      if (normalizedSegments.length !== transcript.segments.length) {
+        windows = generateSlidingWindows(
+          { ...transcript, segments: normalizedSegments },
+          config,
+        );
+      }
+
+      if (windows.length === 0) {
+        // Group available speech segments into a single fallback window (capped at durationHardMax)
+        const picked: TranscriptSegment[] = [];
+        const first = normalizedSegments[0]!;
+        for (const seg of normalizedSegments) {
+          if (seg.end - first.start <= config.penalties.durationHardMax || picked.length === 0) {
+            picked.push(seg);
+          } else {
+            break;
+          }
+        }
+        const last = picked[picked.length - 1]!;
+        windows = [
+          {
+            startSegmentIdx: 0,
+            endSegmentIdx: picked.length - 1,
+            start: first.start,
+            end: Math.min(last.end, first.start + config.penalties.durationHardMax),
+            segments: picked,
+          },
+        ];
+      }
+    } else if (transcript.durationSec > 0) {
+      // Instrumental / silent video fallback so preview, reframe, and MP4 export remain available
+      const peak = findPeakEnergyWindow(
+        transcript.durationSec,
+        energyProfile,
+        Math.min(30, config.penalties.durationIdealMax),
+      );
+      windows = [
+        {
+          startSegmentIdx: 0,
+          endSegmentIdx: 0,
+          start: peak.start,
+          end: peak.end,
+          segments: [
+            {
+              id: 0,
+              start: peak.start,
+              end: peak.end,
+              text: '',
+              words: [],
+            },
+          ],
+        },
+      ];
+    }
   }
 
   const scored: CandidateClip[] = windows.map((win, idx) => {

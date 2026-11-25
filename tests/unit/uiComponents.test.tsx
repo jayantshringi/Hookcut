@@ -55,6 +55,26 @@ describe('UI components', () => {
     expect(onSelect).toHaveBeenCalledWith(file);
   });
 
+  it('DropZone switches to YouTube / Video URL tab and submits validated URL', () => {
+    const onSubmitUrl = vi.fn();
+    render(
+      <DropZone
+        selectedFile={null}
+        metadata={null}
+        onSelectFile={vi.fn()}
+        onSubmitUrl={onSubmitUrl}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /YouTube \/ Video URL/i }));
+    const urlInput = screen.getByLabelText(/YouTube or video URL/i);
+    fireEvent.change(urlInput, { target: { value: 'https://youtu.be/dQw4w9WgXcQ' } });
+    fireEvent.submit(urlInput.closest('form')!);
+    expect(onSubmitUrl).toHaveBeenCalledWith(
+      'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      expect.any(String),
+    );
+  });
+
   it('PipelineStatusBar shows model download progress and triggers cancel', () => {
     const onCancel = vi.fn();
     render(

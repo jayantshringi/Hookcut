@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   groupWordsIntoSegments,
+  normalizeWhisperSegmentChunks,
   normalizeWhisperWordChunks,
 } from '../../src/transcribe/normalizeWords';
 
@@ -37,6 +38,34 @@ describe('normalizeWhisperWordChunks', () => {
     );
     expect(words[1]!.start).toBeGreaterThanOrEqual(words[0]!.end);
     expect(words[1]!.end).toBeGreaterThan(words[1]!.start);
+  });
+
+  it('drops out-of-bounds hallucinated tokens beyond maxEndSec', () => {
+    const words = normalizeWhisperWordChunks(
+      [
+        { text: ' Valid', timestamp: [0.5, 1.0] },
+        { text: ' Ghost', timestamp: [23.24, 23.44] },
+      ],
+      0,
+      3.0,
+    );
+    expect(words).toEqual([{ text: 'Valid', start: 0.5, end: 1.0 }]);
+  });
+});
+
+describe('normalizeWhisperSegmentChunks', () => {
+  it('distributes segment-level timestamps proportionally across words', () => {
+    const words = normalizeWhisperSegmentChunks(
+      [{ text: 'Why hooks win fast', timestamp: [1.0, 3.0] }],
+      10,
+      20,
+    );
+    expect(words).toHaveLength(4);
+    expect(words[0]!.start).toBe(11);
+    expect(words[3]!.end).toBe(13);
+    for (let i = 1; i < words.length; i++) {
+      expect(words[i]!.start).toBeGreaterThanOrEqual(words[i - 1]!.end);
+    }
   });
 });
 

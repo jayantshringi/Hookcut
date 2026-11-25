@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "eval": "tsx scripts/eval.ts"
+    "eval": "tsx scripts/eval.ts",
+    "yt-bridge": "node scripts/yt-bridge.mjs"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",

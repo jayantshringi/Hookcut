@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DeviceCapabilities } from '../capabilities/types';
 import { extractAudioFromVideo } from '../media/audioExtractClient';
 import { ENERGY_BIN_SEC, type VideoMetadata } from '../media/types';
+import {
+  BridgeUnavailableError,
+  ingestVideoFromUrl,
+  type YouTubePreviewInfo,
+} from '../media/urlIngest';
 import { validateSelectedFile } from '../media/validateFile';
 import { generateClipMetadata, type ClipMetadata } from '../metadata/generateMetadata';
 import { generateClipThumbnail, type ClipThumbnail } from '../metadata/generateThumbnail';
@@ -18,6 +23,7 @@ import type { ModelDownloadProgress, Transcript } from '../transcribe/types';
 
 export type PipelineStage =
   | 'idle'
+  | 'fetching'
   | 'extracting'
   | 'transcribing'
   | 'scoring'
@@ -32,6 +38,7 @@ export interface PipelineUiState {
   progress: number; // 0..1
   downloadProgress: ModelDownloadProgress | null;
   errorMessage: string | null;
+  bridgeSetupUrl?: string | null;
 }
 
 export interface ClipArtifacts {
@@ -47,6 +54,9 @@ export interface ClipArtifacts {
 
 export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+  const [sourceBridgeUrl, setSourceBridgeUrl] = useState<string | undefined>(undefined);
+  const [youtubePreview, setYoutubePreview] = useState<YouTubePreviewInfo | null>(null);
   const [videoMetadata, setVideoMetadata] = useState<VideoMetadata | null>(null);
   const [transcript, setTranscript] = useState<Transcript | null>(null);
   const [clips, setClips] = useState<CandidateClip[]>([]);
@@ -58,10 +68,11 @@ export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
 
   const [pipeline, setPipeline] = useState<PipelineUiState>({
     stage: 'idle',
-    stageLabel: 'Ready for a local video file',
+    stageLabel: 'Ready for a local video file or YouTube link',
     progress: 0,
     downloadProgress: null,
     errorMessage: null,
+    bridgeSetupUrl: null,
   });
 
   const pipelineAbortRef = useRef<AbortController | null>(null);
@@ -75,6 +86,7 @@ export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
       stage: 'cancelled',
       stageLabel: 'Processing cancelled',
       downloadProgress: null,
+      bridgeSetupUrl: null,
     }));
   }, []);
 
@@ -83,42 +95,9 @@ export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
     exportAbortRef.current = null;
   }, []);
 
-  const runPipelineForFile = useCallback(
-    async (file: File) => {
-      if (!capabilities?.plan.canRun) {
-        setPipeline({
-          stage: 'error',
-          stageLabel: 'Unsupported browser environment',
-          progress: 0,
-          downloadProgress: null,
-          errorMessage: 'Web Workers and WebAssembly are required to process videos locally.',
-        });
-        return;
-      }
-
-      try {
-        validateSelectedFile(file);
-      } catch (err) {
-        setPipeline({
-          stage: 'error',
-          stageLabel: 'Invalid video file',
-          progress: 0,
-          downloadProgress: null,
-          errorMessage: err instanceof Error ? err.message : String(err),
-        });
-        return;
-      }
-
-      pipelineAbortRef.current?.abort();
-      const abort = new AbortController();
-      pipelineAbortRef.current = abort;
-
-      setSelectedFile(file);
-      setVideoMetadata(null);
-      setTranscript(null);
-      setClips([]);
-      setSelectedClipId(null);
-      setClipArtifacts({});
+  const processValidatedFile = useCallback(
+    async (file: File, abort: AbortController) => {
+      if (!capabilities?.plan.canRun) return;
 
       try {
         setPipeline({
@@ -127,6 +106,7 @@ export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
           progress: 0.05,
           downloadProgress: null,
           errorMessage: null,
+          bridgeSetupUrl: null,
         });
 
         const extraction = await extractAudioFromVideo({
@@ -253,7 +233,7 @@ export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
           stageLabel:
             snapped.length > 0
               ? `Found ${snapped.length} viral-ready clip${snapped.length === 1 ? '' : 's'}`
-              : 'No speech highlights detected in this video.',
+              : 'No clips could be generated from this video.',
           progress: 1,
           downloadProgress: null,
           errorMessage: null,
@@ -268,6 +248,7 @@ export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
           progress: 0,
           downloadProgress: null,
           errorMessage: err instanceof Error ? err.message : String(err),
+          bridgeSetupUrl: null,
         });
       } finally {
         if (pipelineAbortRef.current === abort) {
@@ -277,6 +258,143 @@ export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
     },
     [capabilities],
   );
+
+  const runPipelineForFile = useCallback(
+    async (file: File) => {
+      if (!capabilities?.plan.canRun) {
+        setPipeline({
+          stage: 'error',
+          stageLabel: 'Unsupported browser environment',
+          progress: 0,
+          downloadProgress: null,
+          errorMessage: 'Web Workers and WebAssembly are required to process videos locally.',
+          bridgeSetupUrl: null,
+        });
+        return;
+      }
+
+      try {
+        validateSelectedFile(file);
+      } catch (err) {
+        setPipeline({
+          stage: 'error',
+          stageLabel: 'Invalid video file',
+          progress: 0,
+          downloadProgress: null,
+          errorMessage: err instanceof Error ? err.message : String(err),
+          bridgeSetupUrl: null,
+        });
+        return;
+      }
+
+      pipelineAbortRef.current?.abort();
+      const abort = new AbortController();
+      pipelineAbortRef.current = abort;
+
+      setSourceUrl(null);
+      setSourceBridgeUrl(undefined);
+      setYoutubePreview(null);
+      setSelectedFile(file);
+      setVideoMetadata(null);
+      setTranscript(null);
+      setClips([]);
+      setSelectedClipId(null);
+      setClipArtifacts({});
+
+      await processValidatedFile(file, abort);
+    },
+    [capabilities, processValidatedFile],
+  );
+
+  const runPipelineForUrl = useCallback(
+    async (rawUrl: string, bridgeUrlOverride?: string) => {
+      if (!capabilities?.plan.canRun) {
+        setPipeline({
+          stage: 'error',
+          stageLabel: 'Unsupported browser environment',
+          progress: 0,
+          downloadProgress: null,
+          errorMessage: 'Web Workers and WebAssembly are required to process videos locally.',
+          bridgeSetupUrl: null,
+        });
+        return;
+      }
+
+      pipelineAbortRef.current?.abort();
+      const abort = new AbortController();
+      pipelineAbortRef.current = abort;
+
+      setSourceUrl(rawUrl);
+      setSourceBridgeUrl(bridgeUrlOverride);
+      setYoutubePreview(null);
+      setSelectedFile(null);
+      setVideoMetadata(null);
+      setTranscript(null);
+      setClips([]);
+      setSelectedClipId(null);
+      setClipArtifacts({});
+
+      try {
+        setPipeline({
+          stage: 'fetching',
+          stageLabel: 'Fetching video metadata and stream…',
+          progress: 0.03,
+          downloadProgress: null,
+          errorMessage: null,
+          bridgeSetupUrl: null,
+        });
+
+        const { file } = await ingestVideoFromUrl({
+          rawUrl,
+          bridgeUrl: bridgeUrlOverride,
+          signal: abort.signal,
+          onPreview: (preview) => setYoutubePreview(preview),
+          onProgress: (prog) => {
+            const pct = prog.totalBytes > 0 ? Math.round(prog.progress * 100) : null;
+            const mb = (prog.loadedBytes / (1024 * 1024)).toFixed(1);
+            setPipeline((prev) => ({
+              ...prev,
+              stage: 'fetching',
+              stageLabel:
+                pct !== null
+                  ? `Downloading video into browser (${pct}% • ${mb} MB)…`
+                  : `Downloading video into browser (${mb} MB)…`,
+              progress: prog.totalBytes > 0 ? 0.03 + prog.progress * 0.12 : 0.06,
+            }));
+          },
+        });
+
+        if (abort.signal.aborted) return;
+        setSelectedFile(file);
+        await processValidatedFile(file, abort);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return;
+        }
+        setPipeline({
+          stage: 'error',
+          stageLabel:
+            err instanceof BridgeUnavailableError ? 'YouTube bridge needed' : 'URL fetch failed',
+          progress: 0,
+          downloadProgress: null,
+          errorMessage: err instanceof Error ? err.message : String(err),
+          bridgeSetupUrl: err instanceof BridgeUnavailableError ? err.bridgeUrl : null,
+        });
+        if (pipelineAbortRef.current === abort) {
+          pipelineAbortRef.current = null;
+        }
+      }
+    },
+    [capabilities, processValidatedFile],
+  );
+
+  const retryPipeline = useCallback(() => {
+    if (sourceUrl) {
+      void runPipelineForUrl(sourceUrl, sourceBridgeUrl);
+    } else if (selectedFile) {
+      void runPipelineForFile(selectedFile);
+    }
+  }, [runPipelineForFile, runPipelineForUrl, selectedFile, sourceBridgeUrl, sourceUrl]);
 
   // Lazily run 4 fps face tracking when a clip is selected for preview/export
   const ensureFaceTrackingForClip = useCallback(
@@ -515,6 +633,8 @@ export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
 
   return {
     selectedFile,
+    sourceUrl,
+    youtubePreview,
     videoMetadata,
     transcript,
     clips,
@@ -530,6 +650,8 @@ export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
     clipArtifacts,
     pipeline,
     runPipelineForFile,
+    runPipelineForUrl,
+    retryPipeline,
     cancelPipeline,
     cancelExport,
     updateClipTrim,

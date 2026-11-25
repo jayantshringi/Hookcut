@@ -102,14 +102,22 @@ npm run build      # Production static bundle in dist/
 
 ## Free Deploy Guide
 
-### Option 1: Cloudflare Pages (Recommended — supports `_headers` for COOP/COEP)
+### Option 1: Cloudflare Workers Static Assets (Recommended — supports `_headers` & `/api/*`)
 
 1. Push this repository to GitHub.
-2. Create a new project in **Cloudflare Pages** connected to your repo.
-3. Configure build settings:
-   - **Build command**: `npm run build`
-   - **Build output directory**: `dist`
-4. Cloudflare Pages automatically reads [`public/_headers`](./public/_headers) to serve `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: credentialless`, enabling `SharedArrayBuffer` for multi-threaded WASM at **$0/month**.
+2. Connect the repo in **Cloudflare Workers & Pages** using `wrangler.jsonc` (`npm run build` + `npx wrangler deploy`).
+3. Cloudflare reads [`public/_headers`](./public/_headers) to serve `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: credentialless`, enabling `SharedArrayBuffer` for multi-threaded WASM, while [`worker/index.ts`](./worker/index.ts) serves `/api/youtube-oembed` and `/api/proxy` for direct video URLs.
+
+### YouTube Link Support (`yt-dlp` Bridge)
+
+Browsers block direct `youtube.com` / `googlevideo.com` media downloads via CORS, and datacenter edge IPs trigger YouTube bot checks. To process YouTube links in Hookcut:
+
+1. Install [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) on your machine (or VPS).
+2. Run the local bridge alongside Hookcut (or host `scripts/yt-bridge.mjs` remotely and set `VITE_YT_BRIDGE_URL` or update **Bridge settings** in the UI):
+   ```bash
+   npm run yt-bridge
+   ```
+3. Paste any YouTube link (`youtube.com/watch?v=...`, `youtu.be/...`, `youtube.com/shorts/...`) into the **YouTube / Video URL** tab.
 
 ### Option 2: GitHub Pages
 

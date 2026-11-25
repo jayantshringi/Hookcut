@@ -1,5 +1,9 @@
 import { env, pipeline, type AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers';
-import { normalizeWhisperWordChunks, type RawWhisperChunk } from '../transcribe/normalizeWords';
+import {
+  normalizeWhisperSegmentChunks,
+  normalizeWhisperWordChunks,
+  type RawWhisperChunk,
+} from '../transcribe/normalizeWords';
 import type { ModelDownloadProgress, WordTimestamp } from '../transcribe/types';
 
 export interface TranscribeChunkInput {
@@ -88,6 +92,56 @@ async function createTranscriber(
   return { transcriber, activeDevice: 'wasm' };
 }
 
+async function runTranscriberPass(
+  transcriber: AutomaticSpeechRecognitionPipeline,
+  chunk: TranscribeChunkInput,
+  returnTimestamps: 'word' | true,
+  langOptions: Record<string, string>,
+): Promise<WordTimestamp[]> {
+  const result = await transcriber(chunk.samples, {
+    return_timestamps: returnTimestamps,
+    force_full_sequences: false,
+    chunk_length_s: 30,
+    stride_length_s: 5,
+    ...langOptions,
+  });
+  const single = Array.isArray(result) ? result[0] : result;
+  const rawChunks = (single?.chunks ?? []) as RawWhisperChunk[];
+  if (rawChunks.length > 0) {
+    return returnTimestamps === 'word'
+      ? normalizeWhisperWordChunks(rawChunks, chunk.startSec, chunk.endSec)
+      : normalizeWhisperSegmentChunks(rawChunks, chunk.startSec, chunk.endSec);
+  }
+  if (single?.text?.trim()) {
+    return normalizeWhisperSegmentChunks(
+      [{ text: single.text, timestamp: [0, Math.max(0.5, chunk.endSec - chunk.startSec)] }],
+      chunk.startSec,
+      chunk.endSec,
+    );
+  }
+  return [];
+}
+
+async function transcribeChunkWords(
+  transcriber: AutomaticSpeechRecognitionPipeline,
+  chunk: TranscribeChunkInput,
+  language?: string,
+  modelId = '',
+): Promise<WordTimestamp[]> {
+  const langOptions: Record<string, string> =
+    language && !modelId.endsWith('.en') && !modelId.endsWith('.en_timestamped')
+      ? { language, task: 'transcribe' }
+      : {};
+
+  try {
+    return await runTranscriberPass(transcriber, chunk, 'word', langOptions);
+  } catch {
+    if (cancelled) throw new DOMException('Cancelled', 'AbortError');
+    // Fallback to segment-level timestamps when word-level cross-attentions are unavailable
+    return await runTranscriberPass(transcriber, chunk, true, langOptions);
+  }
+}
+
 async function disposeActivePipeline(): Promise<void> {
   if (!activePipeline) return;
   const pipe = activePipeline;
@@ -138,14 +192,12 @@ self.onmessage = async (event: MessageEvent<WhisperWorkerRequest>) => {
         continue;
       }
 
-      const result = await transcriber(chunk.samples, {
-        return_timestamps: 'word',
-        chunk_length_s: 30,
-        stride_length_s: 5,
-        ...(payload.language && payload.modelId.endsWith('.en') === false
-          ? { language: payload.language, task: 'transcribe' }
-          : {}),
-      });
+      const normalized = await transcribeChunkWords(
+        transcriber,
+        chunk,
+        payload.language,
+        payload.modelId,
+      );
 
       if (cancelled) {
         await disposeActivePipeline();
@@ -153,15 +205,11 @@ self.onmessage = async (event: MessageEvent<WhisperWorkerRequest>) => {
         return;
       }
 
-      const single = Array.isArray(result) ? result[0] : result;
-      const rawChunks = (single?.chunks ?? []) as RawWhisperChunk[];
-      const normalized = normalizeWhisperWordChunks(rawChunks, chunk.startSec, chunk.endSec);
-
       allWords.push(...normalized);
       post({
         type: 'CHUNK_DONE',
         chunkIndex: i + 1,
-        totalChunks,
+        totalChunks: totalChunks,
         words: normalized,
       });
     }

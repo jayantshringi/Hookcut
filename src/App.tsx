@@ -46,6 +46,8 @@ export function App({ initialCapabilities }: AppProps) {
 
   const {
     selectedFile,
+    sourceUrl,
+    youtubePreview,
     videoMetadata,
     clips,
     selectedClip,
@@ -60,6 +62,8 @@ export function App({ initialCapabilities }: AppProps) {
     clipArtifacts,
     pipeline,
     runPipelineForFile,
+    runPipelineForUrl,
+    retryPipeline,
     cancelPipeline,
     cancelExport,
     updateClipTrim,
@@ -68,6 +72,7 @@ export function App({ initialCapabilities }: AppProps) {
   } = useHookcutPipeline(capabilities);
 
   const isRunning =
+    pipeline.stage === 'fetching' ||
     pipeline.stage === 'extracting' ||
     pipeline.stage === 'transcribing' ||
     pipeline.stage === 'scoring' ||
@@ -120,15 +125,18 @@ export function App({ initialCapabilities }: AppProps) {
 
         <DropZone
           selectedFile={selectedFile}
+          sourceUrl={sourceUrl}
+          youtubePreview={youtubePreview}
           metadata={videoMetadata}
           disabled={isRunning || !capabilities?.plan.canRun}
           onSelectFile={runPipelineForFile}
+          onSubmitUrl={runPipelineForUrl}
         />
 
         <PipelineStatusBar
           state={pipeline}
           onCancel={cancelPipeline}
-          onRetry={selectedFile ? () => void runPipelineForFile(selectedFile) : undefined}
+          onRetry={selectedFile || sourceUrl ? retryPipeline : undefined}
         />
 
         {clips.length > 0 && (

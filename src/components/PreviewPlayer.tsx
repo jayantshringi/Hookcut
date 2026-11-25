@@ -131,13 +131,21 @@ export function PreviewPlayer({
     renderFrame();
     const onSeeked = () => renderFrame();
     const onLoadedData = () => renderFrame();
+    const onLoadedMetadata = () => {
+      if (video.paused && Math.abs(video.currentTime - clip.start) > 0.05) {
+        video.currentTime = clip.start;
+      }
+      renderFrame();
+    };
     video.addEventListener('seeked', onSeeked);
     video.addEventListener('loadeddata', onLoadedData);
+    video.addEventListener('loadedmetadata', onLoadedMetadata);
 
     return () => {
       cancelAnimationFrame(rafId);
       video.removeEventListener('seeked', onSeeked);
       video.removeEventListener('loadeddata', onLoadedData);
+      video.removeEventListener('loadedmetadata', onLoadedMetadata);
     };
   }, [
     clip,

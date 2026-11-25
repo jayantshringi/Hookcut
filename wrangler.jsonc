@@ -1,11 +1,13 @@
 {
   "name": "hookcut",
+  "main": "worker/index.ts",
   "compatibility_date": "2026-11-23",
   "observability": {
     "enabled": true
   },
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    "binding": "ASSETS"
   }
 }

@@ -26,7 +26,7 @@ describe('buildExecutionPlan', () => {
     expect(plan.tier).toBe('optimal');
     expect(plan.canRun).toBe(true);
     expect(plan.asrDevice).toBe('webgpu');
-    expect(plan.asrModel).toBe('onnx-community/whisper-base.en');
+    expect(plan.asrModel).toBe('onnx-community/whisper-base.en_timestamped');
     expect(plan.llmEnabled).toBe(true);
     expect(plan.videoEngine).toBe('mediabunny-webcodecs');
     expect(plan.exportHeight).toBe(1080);
@@ -37,7 +37,7 @@ describe('buildExecutionPlan', () => {
     const { plan, warnings } = buildExecutionPlan(makeBaseInput({ webgpu: false }));
     expect(plan.tier).toBe('standard');
     expect(plan.asrDevice).toBe('wasm');
-    expect(plan.asrModel).toBe('onnx-community/whisper-tiny.en');
+    expect(plan.asrModel).toBe('onnx-community/whisper-tiny.en_timestamped');
     expect(plan.llmEnabled).toBe(false);
     expect(plan.llmSkipReason).toMatch(/WebGPU unavailable/i);
     expect(plan.videoEngine).toBe('mediabunny-webcodecs');
@@ -57,7 +57,7 @@ describe('buildExecutionPlan', () => {
     );
     expect(plan.tier).toBe('constrained');
     expect(plan.llmEnabled).toBe(false);
-    expect(plan.asrModel).toBe('onnx-community/whisper-tiny.en');
+    expect(plan.asrModel).toBe('onnx-community/whisper-tiny.en_timestamped');
     expect(plan.exportHeight).toBe(720);
     expect(warnings.some((w) => w.code === 'low-memory')).toBe(true);
   });

@@ -185,4 +185,56 @@ describe('candidate generation and overlap deduplication', () => {
     expect(ranked).toHaveLength(1);
     expect(ranked[0]!.features.hook).toBeGreaterThan(0.6);
   });
+
+  it('recovers highlight clips for sparse speech, oversized segments, and silent/music videos', () => {
+    // 1. 28s video with only 12s of speech (< durationHardMin)
+    const sparse = makeTranscriptFromSentences(
+      [{ start: 2, end: 14, text: 'Why do creators lose retention in the first three seconds?' }],
+      28,
+    );
+    const sparseClips = scoreTranscriptCandidates(sparse);
+    expect(sparseClips).toHaveLength(1);
+    expect(sparseClips[0]!.start).toBe(2);
+
+    // 2. Single oversized 75s segment without punctuation
+    const longWords: WordTimestamp[] = Array.from({ length: 150 }, (_, i) => ({
+      text: i === 0 ? 'Why' : `word${i}`,
+      start: i * 0.5,
+      end: i * 0.5 + 0.4,
+    }));
+    const oversized: Transcript = {
+      fileFingerprint: 'long:1:1:h',
+      modelId: 'test',
+      language: 'en',
+      durationSec: 75,
+      text: longWords.map((w) => w.text).join(' '),
+      words: longWords,
+      segments: [{ id: 0, start: 0, end: 75, text: longWords.map((w) => w.text).join(' '), words: longWords }],
+      createdAt: 0,
+    };
+    const splitClips = scoreTranscriptCandidates(oversized);
+    expect(splitClips.length).toBeGreaterThanOrEqual(1);
+    expect(splitClips[0]!.duration).toBeLessThanOrEqual(60);
+
+    // 3. Music/silent video with zero transcribed words
+    const silent: Transcript = {
+      fileFingerprint: 'silent:1:1:h',
+      modelId: 'test',
+      language: 'en',
+      durationSec: 50,
+      text: '',
+      words: [],
+      segments: [],
+      createdAt: 0,
+    };
+    const silentClips = scoreTranscriptCandidates(silent, {
+      energyProfile: {
+        binSec: 1,
+        bins: Array.from({ length: 50 }, (_, i) => (i >= 15 && i <= 40 ? 0.8 : 0.1)),
+      },
+    });
+    expect(silentClips).toHaveLength(1);
+    expect(silentClips[0]!.start).toBeGreaterThanOrEqual(10);
+    expect(silentClips[0]!.duration).toBeGreaterThan(20);
+  });
 });

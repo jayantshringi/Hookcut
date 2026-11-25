@@ -22,9 +22,37 @@ export interface CapabilityProbeDeps {
   }>;
 }
 
-const DEFAULT_ASR_BASE_MODEL = 'onnx-community/whisper-base.en';
-const DEFAULT_ASR_TINY_MODEL = 'onnx-community/whisper-tiny.en';
+const DEFAULT_ASR_BASE_MODEL = 'onnx-community/whisper-base.en_timestamped';
+const DEFAULT_ASR_TINY_MODEL = 'onnx-community/whisper-tiny.en_timestamped';
 const DEFAULT_LLM_MODEL = 'onnx-community/Qwen2.5-0.5B-Instruct';
+const PROBE_TIMEOUT_MS = 3000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve(fallback);
+      }
+    }, ms);
+    promise
+      .then((val) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(val);
+        }
+      })
+      .catch(() => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(fallback);
+        }
+      });
+  });
+}
 
 async function defaultProbeWebGpu(): Promise<{ available: boolean; adapterName: string | null }> {
   const nav = globalThis.navigator as Navigator & {
@@ -277,9 +305,19 @@ export async function detectCapabilities(
       : null;
 
   const [gpuResult, codecsResult, storageAvailableMb] = await Promise.all([
-    deps.probeWebGpu ? deps.probeWebGpu() : defaultProbeWebGpu(),
-    deps.probeWebCodecs ? deps.probeWebCodecs() : defaultProbeWebCodecs(),
-    deps.estimateStorageMb ? deps.estimateStorageMb() : defaultEstimateStorageMb(),
+    deps.probeWebGpu
+      ? deps.probeWebGpu()
+      : withTimeout(defaultProbeWebGpu(), PROBE_TIMEOUT_MS, { available: false, adapterName: null }),
+    deps.probeWebCodecs
+      ? deps.probeWebCodecs()
+      : withTimeout(defaultProbeWebCodecs(), PROBE_TIMEOUT_MS, {
+          available: false,
+          h264Encode: false,
+          aacEncode: false,
+        }),
+    deps.estimateStorageMb
+      ? deps.estimateStorageMb()
+      : withTimeout(defaultEstimateStorageMb(), PROBE_TIMEOUT_MS, null),
   ]);
 
   const { plan, warnings } = buildExecutionPlan({

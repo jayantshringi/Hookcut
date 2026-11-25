@@ -74,6 +74,12 @@ export async function extractAudioWithFfmpegFallback(
       await ffmpeg.mount('WORKERFS' as any, { files: [file] }, inputMountDir);
       mounted = true;
     } catch {
+      // Guard against copying massive >300MB files into WASM MEMFS when WORKERFS is unavailable
+      if (file.size > 300 * 1024 * 1024) {
+        throw new Error(
+          'WORKERFS unavailable for >300 MB file in ffmpeg.wasm audio fallback. Please use Chrome/Edge with WebCodecs enabled.',
+        );
+      }
       // Fallback if WORKERFS mount is unavailable in this environment
       inputPath = `/${safeName}`;
       const stream = file.stream();
