@@ -1,4 +1,3 @@
-import { ALL_FORMATS, BlobSource, CanvasSink, Input } from 'mediabunny';
 import { drawCaptionOverlay } from '../captions/renderCaptions';
 import { composePortraitFrame, sampleReframeAtTime } from '../render/frameComposer';
 import { RESOLUTION_MAP, type CaptionRenderSpec, type ReframeKeyframe } from '../render/types';
@@ -66,13 +65,16 @@ export async function generateClipThumbnail(
   }
 
   let drawn = false;
-  const input = new Input({
-    source: new BlobSource(options.file),
-    formats: ALL_FORMATS,
-  });
+  let input: { dispose: () => void } | null = null;
 
   try {
-    const videoTrack = await input.getPrimaryVideoTrack();
+    const { ALL_FORMATS, BlobSource, CanvasSink, Input } = await import('mediabunny');
+    const mpInput = new Input({
+      source: new BlobSource(options.file),
+      formats: ALL_FORMATS,
+    });
+    input = mpInput;
+    const videoTrack = await mpInput.getPrimaryVideoTrack();
     if (videoTrack && typeof globalThis.VideoDecoder === 'function' && (await videoTrack.canDecode())) {
       const sink = new CanvasSink(videoTrack, { fit: 'fill' });
       const wrapped = await sink.getCanvas(capturedAtSec);
@@ -88,7 +90,7 @@ export async function generateClipThumbnail(
     drawn = false;
   } finally {
     try {
-      input.dispose();
+      input?.dispose();
     } catch {
       // ignore
     }
