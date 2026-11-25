@@ -1,0 +1,34 @@
+# Memory & local scratch
+memory.md
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+dist-ssr/
+
+# Environment files
+.env*
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test & coverage outputs
+coverage/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
