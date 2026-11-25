@@ -11,6 +11,9 @@ import {
   Quality,
   VideoSampleSink,
 } from 'mediabunny';
+import { buildCaptionCues } from '../captions/captionTiming';
+import { getCaptionPreset } from '../captions/presets';
+import { drawCaptionOverlay } from '../captions/renderCaptions';
 import { composePortraitFrame, sampleReframeAtTime } from '../render/frameComposer';
 import {
   RESOLUTION_MAP,
@@ -38,24 +41,6 @@ export type VideoExportWorkerResponse =
   | { type: 'FALLBACK_REQUIRED'; reason: string }
   | { type: 'CANCELLED' }
   | { type: 'ERROR'; message: string };
-
-/**
- * Optional caption hook populated by Phase 10 caption renderer.
- * Keeping the bridge lightweight allows export pipeline and caption rendering to compose cleanly.
- */
-export type FrameOverlayRenderer = (
-  ctx: OffscreenCanvasRenderingContext2D,
-  width: number,
-  height: number,
-  timeSec: number,
-  captions: CaptionRenderSpec,
-) => void;
-
-let overlayRenderer: FrameOverlayRenderer | null = null;
-
-export function registerCaptionOverlayRenderer(fn: FrameOverlayRenderer): void {
-  overlayRenderer = fn;
-}
 
 let cancelled = false;
 let activeInput: Input | null = null;
@@ -175,6 +160,14 @@ self.onmessage = async (event: MessageEvent<VideoExportWorkerRequest>) => {
 
     // 1. Decode, crop/reframe, overlay captions, and encode video frames
     const videoSink = new VideoSampleSink(videoTrack);
+    const captionCues =
+      payload.captions?.enabled && payload.captions.words.length > 0
+        ? buildCaptionCues(
+            payload.captions.words,
+            getCaptionPreset(payload.captions.presetId),
+            payload.captions.emphasisKeywords ?? [],
+          )
+        : undefined;
     let lastEncodedRelTs = -Infinity;
     let lastProgressReport = 0;
 
@@ -207,8 +200,8 @@ self.onmessage = async (event: MessageEvent<VideoExportWorkerRequest>) => {
           reframe,
         );
 
-        if (payload.captions?.enabled && overlayRenderer) {
-          overlayRenderer(outCtx, width, height, sample.timestamp, payload.captions);
+        if (payload.captions?.enabled) {
+          drawCaptionOverlay(outCtx, width, height, sample.timestamp, payload.captions, captionCues);
         }
 
         const frameDur = Math.max(minFrameInterval, sample.duration || minFrameInterval);
