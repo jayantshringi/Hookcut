@@ -45,7 +45,7 @@ export interface ClipArtifacts {
   exportError?: string | null;
 }
 
-export function useClipForgePipeline(capabilities: DeviceCapabilities | null) {
+export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [videoMetadata, setVideoMetadata] = useState<VideoMetadata | null>(null);
   const [transcript, setTranscript] = useState<Transcript | null>(null);

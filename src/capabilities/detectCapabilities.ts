@@ -126,7 +126,7 @@ export function buildExecutionPlan(input: {
     warnings.push({
       code: 'no-worker',
       severity: 'error',
-      message: 'Web Workers are unavailable in this browser. ClipForge requires Web Workers.',
+      message: 'Web Workers are unavailable in this browser. Hookcut requires Web Workers.',
     });
   }
 
