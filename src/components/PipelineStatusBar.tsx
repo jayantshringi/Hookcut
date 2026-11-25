@@ -1,5 +1,5 @@
 import { AlertCircle, CheckCircle2, Download, Loader2, RotateCcw, X } from 'lucide-react';
-import type { PipelineStage, PipelineUiState } from '../pipeline/useClipForgePipeline';
+import type { PipelineStage, PipelineUiState } from '../pipeline/useHookcutPipeline';
 
 interface PipelineStatusBarProps {
   state: PipelineUiState;

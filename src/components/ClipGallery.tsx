@@ -1,5 +1,5 @@
 import { Clock, Flame, Sparkles } from 'lucide-react';
-import type { ClipArtifacts } from '../pipeline/useClipForgePipeline';
+import type { ClipArtifacts } from '../pipeline/useHookcutPipeline';
 import type { CandidateClip } from '../scoring/types';
 
 interface ClipGalleryProps {

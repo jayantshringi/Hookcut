@@ -11,7 +11,7 @@ export function Footer({ onOpenLegal }: FooterProps) {
         <div className="flex flex-wrap items-center gap-3">
           <span className="inline-flex items-center gap-1.5 text-zinc-300 font-medium">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-            ClipForge • MIT Open Source
+            Hookcut • MIT Open Source
           </span>
           <span>Videos stay 100% on your device.</span>
         </div>
@@ -32,7 +32,7 @@ export function Footer({ onOpenLegal }: FooterProps) {
             Terms (Rights Required)
           </button>
           <a
-            href="https://ko-fi.com/clipforge"
+            href="https://ko-fi.com/hookcut"
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1 rounded-lg border border-amber-500/35 bg-amber-500/10 px-2.5 py-1 text-amber-300 hover:bg-amber-500/20 transition-colors"

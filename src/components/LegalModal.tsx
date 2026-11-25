@@ -69,7 +69,7 @@ export function LegalModal({ openTab, onClose, onSwitchTab }: LegalModalProps) {
         {openTab === 'privacy' ? (
           <div className="space-y-3 text-xs text-zinc-300 leading-relaxed">
             <p>
-              <strong>Zero server uploads:</strong> ClipForge runs entirely inside your browser.
+              <strong>Zero server uploads:</strong> Hookcut runs entirely inside your browser.
               Your video and audio files are never uploaded, transmitted, or stored on any remote
               server.
             </p>
@@ -79,7 +79,7 @@ export function LegalModal({ openTab, onClose, onSwitchTab }: LegalModalProps) {
               generated transcripts are cached locally in IndexedDB to speed up re-runs.
             </p>
             <p>
-              <strong>No accounts, no tracking:</strong> ClipForge requires no login, no API keys,
+              <strong>No accounts, no tracking:</strong> Hookcut requires no login, no API keys,
               and embeds zero analytics or ad trackers.
             </p>
             <div className="pt-2">
@@ -96,7 +96,7 @@ export function LegalModal({ openTab, onClose, onSwitchTab }: LegalModalProps) {
         ) : (
           <div className="space-y-3 text-xs text-zinc-300 leading-relaxed">
             <p>
-              <strong>Content Ownership &amp; Rights:</strong> You may only use ClipForge on videos
+              <strong>Content Ownership &amp; Rights:</strong> You may only use Hookcut on videos
               that you own or for which you hold full copyright, license, or explicit permission to
               clip, caption, and distribute.
             </p>
@@ -106,7 +106,7 @@ export function LegalModal({ openTab, onClose, onSwitchTab }: LegalModalProps) {
               with platform policies and applicable copyright laws.
             </p>
             <p>
-              <strong>Open-Source License:</strong> ClipForge is open-source software licensed under
+              <strong>Open-Source License:</strong> Hookcut is open-source software licensed under
               the MIT License and provided &ldquo;AS IS&rdquo; without warranty of any kind.
             </p>
           </div>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Camera, Check, Copy, Download, Film, Loader2, X } from 'lucide-react';
-import type { ClipArtifacts } from '../pipeline/useClipForgePipeline';
+import type { ClipArtifacts } from '../pipeline/useHookcutPipeline';
 import type { CandidateClip } from '../scoring/types';
 
 interface ExportPanelProps {
@@ -51,7 +51,7 @@ export function ExportPanel({
   const slug = artifacts.metadata.title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '') || 'clipforge-short';
+    .replace(/^-|-$/g, '') || 'hookcut-short';
 
   return (
     <section
