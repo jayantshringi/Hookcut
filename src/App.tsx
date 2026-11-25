@@ -1,7 +1,18 @@
 import { useEffect, useState } from 'react';
+import { Scissors, ShieldCheck } from 'lucide-react';
 import { detectCapabilities } from './capabilities/detectCapabilities';
 import type { DeviceCapabilities } from './capabilities/types';
+import { CaptionStylePicker } from './components/CaptionStylePicker';
+import { ClipGallery } from './components/ClipGallery';
 import { CompatibilityPanel } from './components/CompatibilityPanel';
+import { DropZone } from './components/DropZone';
+import { ExportPanel } from './components/ExportPanel';
+import { Footer } from './components/Footer';
+import { LegalModal } from './components/LegalModal';
+import { PipelineStatusBar } from './components/PipelineStatusBar';
+import { PreviewPlayer } from './components/PreviewPlayer';
+import { TrimHandles } from './components/TrimHandles';
+import { useClipForgePipeline } from './pipeline/useClipForgePipeline';
 
 export interface AppProps {
   initialCapabilities?: DeviceCapabilities;
@@ -13,6 +24,7 @@ export function App({ initialCapabilities }: AppProps) {
   );
   const [checkingCaps, setCheckingCaps] = useState<boolean>(!initialCapabilities);
   const [capsDismissed, setCapsDismissed] = useState<boolean>(false);
+  const [legalTab, setLegalTab] = useState<'privacy' | 'terms' | null>(null);
 
   useEffect(() => {
     if (initialCapabilities) return;
@@ -32,19 +44,72 @@ export function App({ initialCapabilities }: AppProps) {
     };
   }, [initialCapabilities]);
 
+  const {
+    selectedFile,
+    videoMetadata,
+    clips,
+    selectedClip,
+    selectedClipId,
+    setSelectedClipId,
+    captionPresetId,
+    setCaptionPresetId,
+    captionsEnabled,
+    setCaptionsEnabled,
+    customKeywords,
+    setCustomKeywords,
+    clipArtifacts,
+    pipeline,
+    runPipelineForFile,
+    cancelPipeline,
+    cancelExport,
+    updateClipTrim,
+    exportClip,
+    captureThumbnail,
+  } = useClipForgePipeline(capabilities);
+
+  const isRunning =
+    pipeline.stage === 'extracting' ||
+    pipeline.stage === 'transcribing' ||
+    pipeline.stage === 'scoring' ||
+    pipeline.stage === 'reranking';
+
+  const selectedArtifacts = selectedClip ? clipArtifacts[selectedClip.id] : undefined;
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
-      <header className="border-b border-zinc-800/80 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500 text-zinc-950 font-bold text-sm">
-            CF
-          </span>
-          <span className="text-lg font-semibold tracking-tight">ClipForge</span>
+      <header className="border-b border-zinc-800/80 px-4 sm:px-6 py-3.5">
+        <div className="mx-auto max-w-6xl flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500 text-zinc-950 font-bold text-sm">
+              <Scissors className="h-4 w-4" />
+            </span>
+            <div>
+              <span className="text-base sm:text-lg font-bold tracking-tight">ClipForge</span>
+              <span className="ml-2 rounded-md border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400">
+                v0.1.0
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {capsDismissed && (
+              <button
+                type="button"
+                onClick={() => setCapsDismissed(false)}
+                className="text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer"
+              >
+                Device check
+              </button>
+            )}
+            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              100% On-Device • Zero Uploads
+            </span>
+          </div>
         </div>
-        <span className="text-xs text-zinc-400">100% On-Device • Zero Uploads</span>
       </header>
 
-      <main className="flex-1 mx-auto w-full max-w-5xl p-6 space-y-6">
+      <main className="flex-1 mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 space-y-6">
         {!capsDismissed && (
           <CompatibilityPanel
             capabilities={capabilities}
@@ -52,10 +117,74 @@ export function App({ initialCapabilities }: AppProps) {
             onDismiss={() => setCapsDismissed(true)}
           />
         )}
-        <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-8 text-center text-sm text-zinc-400">
-          Drop zone & studio pipeline coming next…
-        </div>
+
+        <DropZone
+          selectedFile={selectedFile}
+          metadata={videoMetadata}
+          disabled={isRunning || !capabilities?.plan.canRun}
+          onSelectFile={runPipelineForFile}
+        />
+
+        <PipelineStatusBar
+          state={pipeline}
+          onCancel={cancelPipeline}
+          onRetry={selectedFile ? () => void runPipelineForFile(selectedFile) : undefined}
+        />
+
+        {clips.length > 0 && (
+          <div className="grid gap-6 lg:grid-cols-[300px_1fr_360px] items-start">
+            <ClipGallery
+              clips={clips}
+              selectedClipId={selectedClipId}
+              artifacts={clipArtifacts}
+              onSelectClip={setSelectedClipId}
+            />
+
+            <div className="space-y-4">
+              <PreviewPlayer
+                file={selectedFile}
+                clip={selectedClip}
+                reframeKeyframes={selectedArtifacts?.reframeKeyframes}
+                trackingFaces={selectedArtifacts?.trackingFaces}
+                captionsEnabled={captionsEnabled}
+                captionPresetId={captionPresetId}
+                customKeywords={customKeywords}
+              />
+              {selectedClip && (
+                <TrimHandles
+                  clip={selectedClip}
+                  maxDurationSec={videoMetadata?.durationSec ?? selectedClip.end}
+                  onChangeTrim={updateClipTrim}
+                />
+              )}
+            </div>
+
+            {selectedClip && selectedArtifacts && (
+              <div className="space-y-4">
+                <CaptionStylePicker
+                  enabled={captionsEnabled}
+                  presetId={captionPresetId}
+                  customKeywords={customKeywords}
+                  onToggleEnabled={setCaptionsEnabled}
+                  onSelectPreset={setCaptionPresetId}
+                  onChangeKeywords={setCustomKeywords}
+                />
+                <ExportPanel
+                  clip={selectedClip}
+                  artifacts={selectedArtifacts}
+                  defaultExportHeight={capabilities?.plan.exportHeight ?? 1080}
+                  onExport={exportClip}
+                  onCancelExport={cancelExport}
+                  onCaptureThumbnail={captureThumbnail}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </main>
+
+      <Footer onOpenLegal={setLegalTab} />
+      <LegalModal openTab={legalTab} onClose={() => setLegalTab(null)} onSwitchTab={setLegalTab} />
     </div>
   );
 }
