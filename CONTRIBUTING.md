@@ -1,6 +1,6 @@
-# Contributing to ClipForge
+# Contributing to Hookcut
 
-Thank you for helping make **ClipForge** better! ClipForge is a 100% free, open-source, browser-only video repurposer that runs completely on the user's device.
+Thank you for helping make **Hookcut** better! Hookcut is a 100% free, open-source, browser-only video repurposer that runs completely on the user's device.
 
 ## Development Principles
 

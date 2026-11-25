@@ -1,6 +1,6 @@
 # Models & Licenses
 
-ClipForge downloads and caches all ML models directly inside the user's browser (via Cache Storage / IndexedDB). No inference runs on any remote server.
+Hookcut downloads and caches all ML models directly inside the user's browser (via Cache Storage / IndexedDB). No inference runs on any remote server.
 
 | Role | Model ID | Source | License | Runtime | Approximate Size |
 | :--- | :--- | :--- | :--- | :--- | :--- |

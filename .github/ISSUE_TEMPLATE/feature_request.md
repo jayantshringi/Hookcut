@@ -8,7 +8,7 @@ labels: enhancement
 ## Summary
 Describe the feature or improvement.
 
-## Why it fits ClipForge
+## Why it fits Hookcut
 Explain how it works 100% locally in-browser without backend dependencies.
 
 ## Proposed approach

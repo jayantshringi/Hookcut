@@ -1,6 +1,6 @@
-# ClipForge
+# Hookcut
 
-**ClipForge** is a 100% free, open-source, browser-only web app that turns long-form videos into viral-ready 9:16 vertical shorts with animated word-by-word captions.
+**Hookcut** is a 100% free, open-source, browser-only web app that turns long-form videos into viral-ready 9:16 vertical shorts with animated word-by-word captions.
 
 - **Zero backend, zero accounts, zero user API keys**
 - **100% on-device privacy** — videos are streamed locally and never leave your machine
@@ -40,7 +40,7 @@ flowchart LR
 | 9:16 MP4 Export (`H.264` + `AAC`) | Mediabunny + WebCodecs (hardware/fast) | Lazy `ffmpeg.wasm` fallback | Mediabunny + WebCodecs |
 | `SharedArrayBuffer` (`COOP`/`COEP`) | Supported via `public/_headers` | Supported via `public/_headers` | Single-thread fallback |
 
-On weaker or memory-constrained devices (`<= 4 GB` RAM, `<= 2` CPU cores, or no WebGPU), ClipForge automatically switches to `whisper-tiny.en`, disables the local LLM re-ranker, warns the user in the compatibility screen, and scales export limits cleanly.
+On weaker or memory-constrained devices (`<= 4 GB` RAM, `<= 2` CPU cores, or no WebGPU), Hookcut automatically switches to `whisper-tiny.en`, disables the local LLM re-ranker, warns the user in the compatibility screen, and scales export limits cleanly.
 
 ---
 
@@ -134,7 +134,7 @@ See [`docs/MODELS.md`](./docs/MODELS.md) for every model ID, runtime, size, and 
 ## Contributing & Support
 
 Contributions are welcome! Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) before opening a PR.
-If ClipForge saves you time or money, consider supporting development via [Ko-fi](https://ko-fi.com/clipforge) or [GitHub Sponsors](https://github.com/jayantshringi).
+If Hookcut saves you time or money, consider supporting development via [Ko-fi](https://ko-fi.com/hookcut) or [GitHub Sponsors](https://github.com/jayantshringi).
 
 ## License
 
