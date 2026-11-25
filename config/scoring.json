@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "weights": {
+    "hook": 0.25,
+    "completeness": 0.15,
+    "emotion": 0.12,
+    "curiosity": 0.10,
+    "ending": 0.10,
+    "audioEnergy": 0.10,
+    "speechRateChange": 0.08,
+    "laughter": 0.05,
+    "topicCoherence": 0.05
+  },
+  "penalties": {
+    "silenceRatioOver": 0.25,
+    "silenceMaxPenalty": 0.20,
+    "durationIdealMin": 25,
+    "durationIdealMax": 45,
+    "durationHardMin": 20,
+    "durationHardMax": 60,
+    "durationMaxPenalty": 0.15
+  },
+  "rerank": {
+    "candidatesToRerank": 12,
+    "heuristicWeight": 0.4,
+    "llmWeight": 0.6,
+    "minLlmScoreToKeep": 40,
+    "topN": 5
+  },
+  "overlap": { "maxOverlapRatio": 0.3 }
+}
