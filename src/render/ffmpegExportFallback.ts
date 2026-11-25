@@ -70,8 +70,30 @@ export async function exportClipWithFfmpegFallback(
       await ffmpeg.mount('WORKERFS' as any, { files: [request.file] }, mountDir);
       mounted = true;
     } catch {
+      // Guard against copying massive >300MB files into WASM MEMFS when WORKERFS is unavailable
+      if (request.file.size > 300 * 1024 * 1024) {
+        throw new Error(
+          'WORKERFS unavailable for >300 MB file in ffmpeg.wasm fallback. Please use Chrome/Edge with WebCodecs enabled.',
+        );
+      }
       inputPath = `/${safeName}`;
-      const buf = new Uint8Array(await request.file.arrayBuffer());
+      const reader = request.file.stream().getReader();
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          total += value.byteLength;
+        }
+      }
+      const buf = new Uint8Array(total);
+      let offset = 0;
+      for (const c of chunks) {
+        buf.set(c, offset);
+        offset += c.byteLength;
+      }
       await ffmpeg.writeFile(inputPath, buf);
     }
 

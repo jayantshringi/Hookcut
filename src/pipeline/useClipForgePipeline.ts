@@ -179,6 +179,9 @@ export function useClipForgePipeline(capabilities: DeviceCapabilities | null) {
           },
         });
 
+        // Release raw 16 kHz PCM buffers immediately after transcription completes
+        extraction.chunks.length = 0;
+
         setTranscript(tx);
 
         setPipeline({
