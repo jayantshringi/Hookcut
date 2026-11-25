@@ -4,7 +4,8 @@ Hookcut downloads and caches all ML models directly inside the user's browser (v
 
 | Role | Model ID | Source | License | Runtime | Approximate Size |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| Speech-to-Text (ASR) | `onnx-community/whisper-tiny.en_timestamped` (default fast) / `onnx-community/whisper-base.en_timestamped` (quality) | Hugging Face / OpenAI Whisper | MIT | `@huggingface/transformers` (WebGPU / WASM) | ~40 MB (tiny) / ~75 MB (base) |
+| Speech-to-Text (ASR — English) | `onnx-community/whisper-tiny.en_timestamped` (fast) / `onnx-community/whisper-base.en_timestamped` (quality) | Hugging Face / OpenAI Whisper | MIT | `@huggingface/transformers` (WebGPU / WASM) | ~40 MB (tiny) / ~75 MB (base) |
+| Speech-to-Text (ASR — Multilingual, e.g. Hindi/Spanish) | `onnx-community/whisper-tiny_timestamped` / `onnx-community/whisper-base_timestamped` | Hugging Face / OpenAI Whisper | MIT | `@huggingface/transformers` (WebGPU / WASM) | ~45 MB (tiny) / ~80 MB (base) |
 | Highlight Re-ranking (LLM) | `onnx-community/Qwen2.5-0.5B-Instruct` (optional WebGPU) / fallback `HuggingFaceTB/SmolLM2-360M-Instruct` | Hugging Face / Qwen & HuggingFaceTB | Apache-2.0 | `@huggingface/transformers` (WebGPU) | ~300–400 MB (q4f16) |
 | Face Detection | `blaze_face_short_range` (`float16`) | Google MediaPipe | Apache-2.0 | `@mediapipe/tasks-vision` (WebGL / CPU WASM) | ~230 KB |
 

@@ -33,15 +33,25 @@ export interface UrlIngestOptions {
 
 export class BridgeUnavailableError extends Error {
   readonly bridgeUrl: string;
+  readonly isPublicDeployment: boolean;
 
-  constructor(bridgeUrl: string, message?: string) {
+  constructor(bridgeUrl: string, message?: string, isPublicDeployment = false) {
     super(
       message ??
-        `YouTube bridge is not reachable at ${bridgeUrl}. Start it locally with "npm run yt-bridge" (requires yt-dlp) or enter your self-hosted bridge URL.`,
+        (isPublicDeployment
+          ? 'No YouTube download server is configured on this deployment. Use "Record Browser Tab" below (works right in Chrome/Edge with zero installs), upload a local video, or enter a self-hosted bridge/Cobalt URL in Bridge settings.'
+          : `YouTube bridge is not reachable at ${bridgeUrl}. Start it locally with "npm run yt-bridge" (requires yt-dlp), use "Record Browser Tab", or enter a self-hosted bridge/Cobalt URL.`),
     );
     this.name = 'BridgeUnavailableError';
     this.bridgeUrl = bridgeUrl;
+    this.isPublicDeployment = isPublicDeployment;
   }
+}
+
+export function isLocalBrowserHost(): boolean {
+  const host = globalThis.location?.hostname?.toLowerCase();
+  if (!host) return true;
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
 }
 
 export function getDefaultYtBridgeUrl(): string {
@@ -137,10 +147,22 @@ export function classifyVideoUrl(rawUrl: string): ClassifiedVideoUrl {
   return { kind: 'direct', url: parsed.toString() };
 }
 
+export async function checkWorkerBridgeConfigured(signal?: AbortSignal): Promise<boolean> {
+  if (!globalThis.location?.protocol?.startsWith('http')) return false;
+  try {
+    const res = await fetch('/api/yt-bridge/status', { signal });
+    if (!res.ok) return false;
+    const data = (await res.json().catch(() => null)) as { configured?: boolean } | null;
+    return Boolean(data?.configured);
+  } catch {
+    return false;
+  }
+}
+
 export async function checkBridgeHealth(
   bridgeUrl: string,
   signal?: AbortSignal,
-): Promise<{ ok: boolean; ytdlpVersion?: string; error?: string }> {
+): Promise<{ ok: boolean; kind?: 'yt-bridge' | 'cobalt'; ytdlpVersion?: string; error?: string }> {
   const base = normalizeBridgeUrl(bridgeUrl);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3000);
@@ -149,15 +171,34 @@ export async function checkBridgeHealth(
 
   try {
     const res = await fetch(`${base}/health`, { signal: controller.signal });
-    const data = (await res.json().catch(() => null)) as {
-      ok?: boolean;
-      ytdlpVersion?: string;
-      error?: string;
-    } | null;
-    if (!res.ok || !data?.ok) {
+    if (res.ok) {
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        mode?: string;
+        ytdlpVersion?: string;
+        error?: string;
+      } | null;
+      if (data?.ok) {
+        return {
+          ok: true,
+          kind: data.mode === 'cobalt' ? 'cobalt' : 'yt-bridge',
+          ytdlpVersion: data.ytdlpVersion,
+        };
+      }
       return { ok: false, error: data?.error || `HTTP ${res.status}` };
     }
-    return { ok: true, ytdlpVersion: data.ytdlpVersion };
+
+    // Check if the endpoint is a self-hosted Cobalt instance (`GET /` returns `{ cobalt: ... }`)
+    const rootRes = await fetch(`${base}/`, { signal: controller.signal }).catch(() => null);
+    if (rootRes?.ok) {
+      const rootJson = (await rootRes.json().catch(() => null)) as { cobalt?: unknown } | null;
+      if (rootJson && typeof rootJson === 'object' && 'cobalt' in rootJson) {
+        return { ok: true, kind: 'cobalt', ytdlpVersion: 'cobalt' };
+      }
+    }
+
+    const errData = (await res.json().catch(() => null)) as { error?: string } | null;
+    return { ok: false, error: errData?.error || `HTTP ${res.status}` };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   } finally {
@@ -179,47 +220,36 @@ export async function fetchYouTubePreview(
   };
 
   const base = normalizeBridgeUrl(bridgeUrl ?? getStoredYtBridgeUrl());
-  if (base) {
+  const tryInfoEndpoints = [
+    ...(base && (base.startsWith('/') || isLocalBrowserHost() || base !== DEFAULT_LOCAL_BRIDGE)
+      ? [`${base}/info?url=${encodeURIComponent(watchUrl)}`]
+      : []),
+    ...(globalThis.location?.protocol?.startsWith('http')
+      ? [`/api/youtube-oembed?url=${encodeURIComponent(watchUrl)}`]
+      : []),
+  ];
+
+  for (const endpoint of tryInfoEndpoints) {
     try {
-      const res = await fetch(`${base}/info?url=${encodeURIComponent(watchUrl)}`, { signal });
+      const res = await fetch(endpoint, { signal });
       if (res.ok) {
         const info = (await res.json()) as {
           title?: string;
           uploader?: string;
+          authorName?: string;
           durationSec?: number;
           thumbnailUrl?: string;
         };
         return {
           videoId,
           title: info.title || fallback.title,
-          authorName: info.uploader,
+          authorName: info.uploader || info.authorName,
           durationSec: typeof info.durationSec === 'number' ? info.durationSec : undefined,
           thumbnailUrl: info.thumbnailUrl || fallback.thumbnailUrl,
         };
       }
     } catch {
-      // fall through to oEmbed
-    }
-  }
-
-  if (globalThis.location?.protocol?.startsWith('http')) {
-    try {
-      const res = await fetch(`/api/youtube-oembed?url=${encodeURIComponent(watchUrl)}`, { signal });
-      if (res.ok) {
-        const oembed = (await res.json()) as {
-          title?: string;
-          authorName?: string;
-          thumbnailUrl?: string;
-        };
-        return {
-          videoId,
-          title: oembed.title || fallback.title,
-          authorName: oembed.authorName,
-          thumbnailUrl: oembed.thumbnailUrl || fallback.thumbnailUrl,
-        };
-      }
-    } catch {
-      // ignore oEmbed failure
+      // continue to next endpoint
     }
   }
 
@@ -299,6 +329,93 @@ function inferFilenameFromUrl(url: string, fallbackExt = 'mp4'): string {
   return `remote-video.${fallbackExt}`;
 }
 
+async function resolveActiveBridge(
+  requestedBridgeUrl: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<{ base: string; kind: 'yt-bridge' | 'cobalt' }> {
+  const customOrDefault = normalizeBridgeUrl(requestedBridgeUrl ?? getStoredYtBridgeUrl());
+  const isDefaultLocal = customOrDefault === DEFAULT_LOCAL_BRIDGE;
+  const isCustomExplicit = Boolean(
+    customOrDefault && customOrDefault !== DEFAULT_LOCAL_BRIDGE,
+  );
+
+  if (isCustomExplicit) {
+    const health = await checkBridgeHealth(customOrDefault, signal);
+    if (health.ok) {
+      return { base: customOrDefault, kind: health.kind ?? 'yt-bridge' };
+    }
+    throw new BridgeUnavailableError(
+      customOrDefault,
+      health.error?.includes('yt-dlp') ? health.error : undefined,
+      !isLocalBrowserHost(),
+    );
+  }
+
+  // On a public HTTP(S) deploy, prefer the Cloudflare Worker `/api/yt-bridge` proxy if configured
+  if (await checkWorkerBridgeConfigured(signal)) {
+    const workerHealth = await checkBridgeHealth('/api/yt-bridge', signal);
+    if (workerHealth.ok) {
+      return { base: '/api/yt-bridge', kind: workerHealth.kind ?? 'yt-bridge' };
+    }
+  }
+
+  // Otherwise try local bridge if running on user's machine
+  if (isDefaultLocal) {
+    const localHealth = await checkBridgeHealth(DEFAULT_LOCAL_BRIDGE, signal);
+    if (localHealth.ok) {
+      return { base: DEFAULT_LOCAL_BRIDGE, kind: localHealth.kind ?? 'yt-bridge' };
+    }
+    throw new BridgeUnavailableError(
+      DEFAULT_LOCAL_BRIDGE,
+      localHealth.error?.includes('yt-dlp') ? localHealth.error : undefined,
+      !isLocalBrowserHost(),
+    );
+  }
+
+  throw new BridgeUnavailableError(customOrDefault, undefined, !isLocalBrowserHost());
+}
+
+async function downloadFromCobalt(
+  bridgeBase: string,
+  watchUrl: string,
+  signal: AbortSignal | undefined,
+): Promise<Response> {
+  const cobaltRes = await fetch(`${bridgeBase}/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({
+      url: watchUrl,
+      videoQuality: '1080',
+      filenameStyle: 'basic',
+    }),
+    signal,
+  });
+
+  const data = (await cobaltRes.json().catch(() => null)) as {
+    url?: string;
+    error?: { code?: string };
+  } | null;
+
+  if (!cobaltRes.ok || !data?.url) {
+    throw new Error(data?.error?.code || `Cobalt API error (HTTP ${cobaltRes.status}).`);
+  }
+
+  try {
+    const mediaRes = await fetch(data.url, { signal });
+    if (mediaRes.ok) return mediaRes;
+  } catch {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+  }
+
+  if (globalThis.location?.protocol?.startsWith('http')) {
+    return fetch(`/api/proxy?url=${encodeURIComponent(data.url)}`, { signal });
+  }
+  throw new Error('Could not download Cobalt stream URL.');
+}
+
 export async function ingestVideoFromUrl(
   options: UrlIngestOptions,
 ): Promise<{ file: File; sourceLabel: string }> {
@@ -337,41 +454,28 @@ export async function ingestVideoFromUrl(
     return { file, sourceLabel: classified.url };
   }
 
-  const bridgeUrl = normalizeBridgeUrl(options.bridgeUrl ?? getStoredYtBridgeUrl());
-  const health = await checkBridgeHealth(bridgeUrl, signal);
-  if (!health.ok) {
-    // Fetch lightweight oEmbed preview even if bridge isn't running yet
-    const preview = await fetchYouTubePreview(
-      classified.videoId,
-      classified.url,
-      undefined,
-      signal,
-    ).catch(() => undefined);
-    if (preview) onPreview?.(preview);
-    throw new BridgeUnavailableError(
-      bridgeUrl,
-      health.error?.includes('yt-dlp')
-        ? health.error
-        : undefined,
-    );
-  }
-
   const preview = await fetchYouTubePreview(
     classified.videoId,
     classified.url,
-    bridgeUrl,
+    options.bridgeUrl,
     signal,
-  );
-  onPreview?.(preview);
+  ).catch(() => undefined);
+  if (preview) onPreview?.(preview);
 
-  if (typeof preview.durationSec === 'number' && preview.durationSec > MAX_VIDEO_DURATION_SEC) {
+  const bridge = await resolveActiveBridge(options.bridgeUrl, signal);
+
+  if (typeof preview?.durationSec === 'number' && preview.durationSec > MAX_VIDEO_DURATION_SEC) {
     validateVideoDuration(preview.durationSec);
   }
 
-  const downloadRes = await fetch(
-    `${bridgeUrl}/download?url=${encodeURIComponent(classified.url)}`,
-    { signal },
-  );
+  const downloadRes =
+    bridge.kind === 'cobalt'
+      ? await downloadFromCobalt(bridge.base, classified.url, signal)
+      : await fetch(
+          `${bridge.base}/download?url=${encodeURIComponent(classified.url)}`,
+          { signal },
+        );
+
   if (!downloadRes.ok) {
     const errBody = (await downloadRes.json().catch(() => null)) as { error?: string } | null;
     throw new Error(errBody?.error || `YouTube download failed (HTTP ${downloadRes.status}).`);
@@ -379,7 +483,7 @@ export async function ingestVideoFromUrl(
 
   const blob = await readResponseAsBlob(downloadRes, onProgress);
   const safeBase =
-    preview.title
+    (preview?.title || classified.videoId)
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '')

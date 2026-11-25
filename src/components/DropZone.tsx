@@ -1,14 +1,21 @@
-import { useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react';
+import { useRef, useState, useEffect, type DragEvent, type FormEvent } from 'react';
 import {
   CheckCircle2,
   Film,
   Globe,
+  Languages,
   Link2,
+  Radio,
   Settings2,
   ShieldCheck,
+  Square,
   Upload,
   WifiOff,
 } from 'lucide-react';
+import {
+  formatRecordingDuration,
+  isTabCaptureSupported,
+} from '../media/tabCapture';
 import type { VideoMetadata } from '../media/types';
 import {
   checkBridgeHealth,
@@ -18,6 +25,17 @@ import {
   setStoredYtBridgeUrl,
   type YouTubePreviewInfo,
 } from '../media/urlIngest';
+import { WHISPER_LANGUAGES } from '../transcribe/languages';
+
+export interface TabCaptureUiProps {
+  recording: boolean;
+  elapsedSec: number;
+  hasAudio: boolean;
+  error: string | null;
+  onStart: () => void;
+  onStop: () => void;
+  onCancel: () => void;
+}
 
 interface DropZoneProps {
   onSelectFile: (file: File) => void;
@@ -27,6 +45,9 @@ interface DropZoneProps {
   sourceUrl?: string | null;
   youtubePreview?: YouTubePreviewInfo | null;
   metadata: VideoMetadata | null;
+  language?: string;
+  onChangeLanguage?: (lang: string) => void;
+  tabCapture?: TabCaptureUiProps;
 }
 
 function formatBytes(bytes: number): string {
@@ -49,10 +70,13 @@ export function DropZone({
   sourceUrl = null,
   youtubePreview = null,
   metadata,
+  language = 'en',
+  onChangeLanguage,
+  tabCapture,
 }: DropZoneProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [mode, setMode] = useState<'file' | 'url'>('file');
+  const [mode, setMode] = useState<'file' | 'url' | 'record'>('file');
   const [urlInput, setUrlInput] = useState(sourceUrl ?? '');
   const [urlError, setUrlError] = useState<string | null>(null);
   const [showBridgeSettings, setShowBridgeSettings] = useState(false);
@@ -94,6 +118,8 @@ export function DropZone({
   }, [bridgeUrl, urlInput]);
 
   const activePreview = youtubePreview ?? (urlInput.trim() ? draftPreview : null);
+  const effectiveMode = tabCapture?.recording ? 'record' : mode;
+  const tabSupported = isTabCaptureSupported();
 
   const handleFiles = (files: FileList | null) => {
     const file = files?.[0];
@@ -104,7 +130,7 @@ export function DropZone({
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    if (!disabled && mode === 'file') setDragging(true);
+    if (!disabled && effectiveMode === 'file') setDragging(true);
   };
 
   const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
@@ -115,7 +141,7 @@ export function DropZone({
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setDragging(false);
-    if (mode !== 'file') setMode('file');
+    if (effectiveMode !== 'file') setMode('file');
     handleFiles(e.dataTransfer.files);
   };
 
@@ -138,7 +164,9 @@ export function DropZone({
     setBridgeStatus({
       checked: true,
       ok: res.ok,
-      detail: res.ok ? `Connected (yt-dlp ${res.ytdlpVersion ?? 'ready'})` : res.error,
+      detail: res.ok
+        ? `Connected (${res.kind === 'cobalt' ? 'Cobalt API' : `yt-dlp ${res.ytdlpVersion ?? 'ready'}`})`
+        : res.error,
     });
   };
 
@@ -169,35 +197,71 @@ export function DropZone({
           }}
         />
 
-        {/* Source mode selector */}
-        <div className="mb-4 inline-flex rounded-xl border border-zinc-800 bg-zinc-950/70 p-1">
-          <button
-            type="button"
-            onClick={() => setMode('file')}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
-              mode === 'file'
-                ? 'bg-amber-500 text-zinc-950 font-semibold'
-                : 'text-zinc-300 hover:text-zinc-100'
-            }`}
-          >
-            <Upload className="h-3.5 w-3.5" />
-            Local Video File
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode('url')}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
-              mode === 'url'
-                ? 'bg-amber-500 text-zinc-950 font-semibold'
-                : 'text-zinc-300 hover:text-zinc-100'
-            }`}
-          >
-            <Globe className="h-3.5 w-3.5" />
-            YouTube / Video URL
-          </button>
+        {/* Source mode selector + Speech Language */}
+        <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
+          <div className="inline-flex flex-wrap justify-center rounded-xl border border-zinc-800 bg-zinc-950/70 p-1">
+            <button
+              type="button"
+              onClick={() => setMode('file')}
+              disabled={Boolean(tabCapture?.recording)}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50 ${
+                effectiveMode === 'file'
+                  ? 'bg-amber-500 text-zinc-950 font-semibold'
+                  : 'text-zinc-300 hover:text-zinc-100'
+              }`}
+            >
+              <Upload className="h-3.5 w-3.5" />
+              Local Video File
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('url')}
+              disabled={Boolean(tabCapture?.recording)}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-50 ${
+                effectiveMode === 'url'
+                  ? 'bg-amber-500 text-zinc-950 font-semibold'
+                  : 'text-zinc-300 hover:text-zinc-100'
+              }`}
+            >
+              <Globe className="h-3.5 w-3.5" />
+              YouTube / Video URL
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('record')}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                effectiveMode === 'record'
+                  ? 'bg-amber-500 text-zinc-950 font-semibold'
+                  : 'text-zinc-300 hover:text-zinc-100'
+              }`}
+            >
+              <Radio className="h-3.5 w-3.5" />
+              Record Browser Tab
+            </button>
+          </div>
+
+          {onChangeLanguage && (
+            <label className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-950/70 px-2.5 py-1.5 text-xs text-zinc-300">
+              <Languages className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+              <span className="sr-only">Speech language</span>
+              <select
+                aria-label="Speech language"
+                value={language}
+                disabled={disabled || Boolean(tabCapture?.recording)}
+                onChange={(e) => onChangeLanguage(e.target.value)}
+                className="bg-transparent text-xs text-zinc-100 focus:outline-none cursor-pointer"
+              >
+                {WHISPER_LANGUAGES.map((opt) => (
+                  <option key={opt.code} value={opt.code} className="bg-zinc-900 text-zinc-100">
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
 
-        {mode === 'file' ? (
+        {effectiveMode === 'file' && (
           <div className="mx-auto flex max-w-lg flex-col items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/30">
               {selectedFile ? <Film className="h-6 w-6" /> : <Upload className="h-6 w-6" />}
@@ -241,7 +305,9 @@ export function DropZone({
               </span>
             </div>
           </div>
-        ) : (
+        )}
+
+        {effectiveMode === 'url' && (
           <div className="mx-auto max-w-xl space-y-3 text-left">
             <form onSubmit={handleUrlSubmit} className="flex flex-col sm:flex-row gap-2">
               <div className="relative flex-1">
@@ -295,12 +361,20 @@ export function DropZone({
 
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-400">
               <span>
-                Direct MP4/WebM links stream via browser/CORS proxy. YouTube links use your `yt-dlp` bridge.
+                Direct MP4/WebM URLs stream automatically. YouTube links use the configured server or{' '}
+                <button
+                  type="button"
+                  onClick={() => setMode('record')}
+                  className="text-amber-300 hover:underline cursor-pointer"
+                >
+                  browser tab capture
+                </button>
+                .
               </span>
               <button
                 type="button"
                 onClick={() => setShowBridgeSettings((s) => !s)}
-                className="inline-flex items-center gap-1 text-amber-300 hover:underline cursor-pointer"
+                className="inline-flex items-center gap-1 text-zinc-300 hover:text-amber-300 hover:underline cursor-pointer"
               >
                 <Settings2 className="h-3.5 w-3.5" />
                 Bridge settings
@@ -310,7 +384,7 @@ export function DropZone({
             {showBridgeSettings && (
               <div className="rounded-xl border border-zinc-800 bg-zinc-950/80 p-3 space-y-2 text-xs">
                 <label className="block text-[11px] font-medium text-zinc-300" htmlFor="yt-bridge-url">
-                  YouTube Bridge Endpoint (`npm run yt-bridge` or self-hosted URL)
+                  Custom YouTube Bridge / Cobalt Endpoint URL
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -346,6 +420,77 @@ export function DropZone({
                   </p>
                 )}
               </div>
+            )}
+          </div>
+        )}
+
+        {effectiveMode === 'record' && (
+          <div className="mx-auto flex max-w-lg flex-col items-center gap-3">
+            <div
+              className={`flex h-12 w-12 items-center justify-center rounded-xl border ${
+                tabCapture?.recording
+                  ? 'bg-rose-500/20 text-rose-400 border-rose-500/40 animate-pulse'
+                  : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+              }`}
+            >
+              <Radio className="h-6 w-6" />
+            </div>
+
+            {tabCapture?.recording ? (
+              <>
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-zinc-100">
+                    Recording Browser Tab •{' '}
+                    <span className="font-mono text-amber-300">
+                      {formatRecordingDuration(tabCapture.elapsedSec)}
+                    </span>
+                  </p>
+                  {!tabCapture.hasAudio && (
+                    <p className="text-xs text-amber-300">
+                      No audio track detected — make sure &ldquo;Also share tab audio&rdquo; is checked for transcription.
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={tabCapture.onStop}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-4 py-2 text-xs sm:text-sm font-semibold text-zinc-950 hover:bg-amber-400 cursor-pointer"
+                  >
+                    <Square className="h-3.5 w-3.5 fill-current" />
+                    Stop &amp; Forge Clips
+                  </button>
+                  <button
+                    type="button"
+                    onClick={tabCapture.onCancel}
+                    className="rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-200 hover:bg-zinc-700 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-1">
+                  <h2 className="text-base sm:text-lg font-semibold text-zinc-100">
+                    Capture any playing YouTube or browser tab
+                  </h2>
+                  <p className="text-xs sm:text-sm text-zinc-400">
+                    Open YouTube in another tab, click Start Recording, select that tab, and enable{' '}
+                    <strong>Also share tab audio</strong>. 100% browser-only, no server needed.
+                  </p>
+                </div>
+                {tabCapture?.error && <p className="text-xs text-rose-300">{tabCapture.error}</p>}
+                <button
+                  type="button"
+                  disabled={disabled || !tabSupported || !tabCapture}
+                  onClick={tabCapture?.onStart}
+                  className="inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-xs sm:text-sm font-semibold text-zinc-950 hover:bg-amber-400 disabled:opacity-50 transition-colors cursor-pointer"
+                >
+                  <Radio className="h-4 w-4" />
+                  {tabSupported ? 'Start Tab Recording' : 'Tab Recording Requires Desktop Chrome/Edge'}
+                </button>
+              </>
             )}
           </div>
         )}

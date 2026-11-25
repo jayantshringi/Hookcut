@@ -1,10 +1,11 @@
-import { AlertCircle, CheckCircle2, Download, Loader2, RotateCcw, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Download, Loader2, Radio, RotateCcw, X } from 'lucide-react';
 import type { PipelineStage, PipelineUiState } from '../pipeline/useHookcutPipeline';
 
 interface PipelineStatusBarProps {
   state: PipelineUiState;
   onCancel: () => void;
   onRetry?: () => void;
+  onRecordTab?: () => void;
 }
 
 const STEPS: Array<{ id: PipelineStage; label: string }> = [
@@ -27,7 +28,7 @@ const STAGE_ORDER: Record<PipelineStage, number> = {
   error: -1,
 };
 
-export function PipelineStatusBar({ state, onCancel, onRetry }: PipelineStatusBarProps) {
+export function PipelineStatusBar({ state, onCancel, onRetry, onRecordTab }: PipelineStatusBarProps) {
   if (state.stage === 'idle') return null;
 
   const isRunning =
@@ -66,10 +67,26 @@ export function PipelineStatusBar({ state, onCancel, onRetry }: PipelineStatusBa
               <p className="text-xs text-rose-300 mt-0.5">{state.errorMessage}</p>
             )}
             {state.bridgeSetupUrl && (
-              <div className="mt-2 rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-[11px] text-zinc-300 space-y-1">
-                <p>
-                  Run <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-amber-300">npm run yt-bridge</code> locally (requires <code className="rounded bg-zinc-800 px-1 py-0.5">yt-dlp</code>), or configure a remote bridge URL under <strong>YouTube / Video URL → Bridge settings</strong>, then click <strong>Retry</strong>.
-                </p>
+              <div className="mt-2 rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-[11px] text-zinc-300 space-y-2">
+                {state.isPublicBridgeMissing ? (
+                  <p>
+                    Use <strong>Record YouTube / Browser Tab</strong> to capture the playing tab directly in Chrome/Edge (100% browser-only, no install needed), or set your own <code>yt-dlp</code> / Cobalt URL under <strong>Bridge settings</strong>.
+                  </p>
+                ) : (
+                  <p>
+                    Run <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-amber-300">npm run yt-bridge</code> locally (requires <code className="rounded bg-zinc-800 px-1.5 py-0.5">yt-dlp</code>), configure a Cobalt/bridge URL in <strong>Bridge settings</strong>, or record the browser tab directly.
+                  </p>
+                )}
+                {onRecordTab && (
+                  <button
+                    type="button"
+                    onClick={onRecordTab}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-300 hover:bg-amber-500/25 cursor-pointer"
+                  >
+                    <Radio className="h-3.5 w-3.5" />
+                    Record YouTube / Browser Tab
+                  </button>
+                )}
               </div>
             )}
           </div>

@@ -108,16 +108,16 @@ npm run build      # Production static bundle in dist/
 2. Connect the repo in **Cloudflare Workers & Pages** using `wrangler.jsonc` (`npm run build` + `npx wrangler deploy`).
 3. Cloudflare reads [`public/_headers`](./public/_headers) to serve `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: credentialless`, enabling `SharedArrayBuffer` for multi-threaded WASM, while [`worker/index.ts`](./worker/index.ts) serves `/api/youtube-oembed` and `/api/proxy` for direct video URLs.
 
-### YouTube Link Support (`yt-dlp` Bridge)
+### YouTube Link Support (`YT_BRIDGE_URL`, Cobalt, or Browser Tab Capture)
 
-Browsers block direct `youtube.com` / `googlevideo.com` media downloads via CORS, and datacenter edge IPs trigger YouTube bot checks. To process YouTube links in Hookcut:
+Browsers block direct `youtube.com` / `googlevideo.com` media downloads via CORS, and Cloudflare Workers edge IPs trigger YouTube bot checks (`poToken`). Hookcut supports three ways to ingest YouTube videos:
 
-1. Install [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) on your machine (or VPS).
-2. Run the local bridge alongside Hookcut (or host `scripts/yt-bridge.mjs` remotely and set `VITE_YT_BRIDGE_URL` or update **Bridge settings** in the UI):
+1. **Public deployment backend (zero visitor setup):** Deploy [`docker/yt-bridge.Dockerfile`](./docker/yt-bridge.Dockerfile) (or self-host [Cobalt](https://github.com/imputnet/cobalt)) on Railway / Render / Fly.io / a VPS, then set `YT_BRIDGE_URL` (and optional `YT_BRIDGE_TOKEN`) in **Cloudflare Workers → Settings → Variables and Secrets**. Hookcut automatically routes YouTube requests through `/api/yt-bridge/*`.
+2. **Browser Tab Capture ($0 backend):** On desktop Chrome/Edge, visitors can open the **Record Browser Tab** tab (with **Also share tab audio** enabled) to capture any playing YouTube or web video directly into the local pipeline with no server required.
+3. **Local developer bridge:** Install [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) and run:
    ```bash
    npm run yt-bridge
    ```
-3. Paste any YouTube link (`youtube.com/watch?v=...`, `youtu.be/...`, `youtube.com/shorts/...`) into the **YouTube / Video URL** tab.
 
 ### Option 2: GitHub Pages
 

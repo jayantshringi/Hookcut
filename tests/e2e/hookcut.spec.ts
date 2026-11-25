@@ -121,6 +121,13 @@ test('processes a local sample video end-to-end in the browser', async ({ page }
 });
 
 test('processes a YouTube link via the bridge into 9:16 clips', async ({ page }) => {
+  await page.route('**/api/yt-bridge/status', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ configured: false }),
+    });
+  });
   await page.route('http://127.0.0.1:8787/health', async (route) => {
     await route.fulfill({
       status: 200,

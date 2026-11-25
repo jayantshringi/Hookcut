@@ -3,6 +3,10 @@ import type { DeviceCapabilities } from '../capabilities/types';
 import { extractAudioFromVideo } from '../media/audioExtractClient';
 import { ENERGY_BIN_SEC, type VideoMetadata } from '../media/types';
 import {
+  startTabCaptureSession,
+  type TabCaptureSession,
+} from '../media/tabCapture';
+import {
   BridgeUnavailableError,
   ingestVideoFromUrl,
   type YouTubePreviewInfo,
@@ -18,6 +22,7 @@ import { scoreTranscriptCandidates } from '../scoring/candidates';
 import { SCORING_CONFIG } from '../scoring/config';
 import { rerankWithLocalLlm } from '../scoring/rerankClient';
 import type { CandidateClip } from '../scoring/types';
+import { selectAsrModelForLanguage } from '../transcribe/languages';
 import { transcribeAudioChunks } from '../transcribe/transcribeClient';
 import type { ModelDownloadProgress, Transcript } from '../transcribe/types';
 
@@ -39,6 +44,7 @@ export interface PipelineUiState {
   downloadProgress: ModelDownloadProgress | null;
   errorMessage: string | null;
   bridgeSetupUrl?: string | null;
+  isPublicBridgeMissing?: boolean;
 }
 
 export interface ClipArtifacts {
@@ -64,6 +70,7 @@ export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
   const [captionPresetId, setCaptionPresetId] = useState<string>('bold-amber');
   const [captionsEnabled, setCaptionsEnabled] = useState<boolean>(true);
   const [customKeywords, setCustomKeywords] = useState<string>('');
+  const [language, setLanguage] = useState<string>('en');
   const [clipArtifacts, setClipArtifacts] = useState<Record<string, ClipArtifacts>>({});
 
   const [pipeline, setPipeline] = useState<PipelineUiState>({
@@ -77,6 +84,13 @@ export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
 
   const pipelineAbortRef = useRef<AbortController | null>(null);
   const exportAbortRef = useRef<AbortController | null>(null);
+  const tabSessionRef = useRef<TabCaptureSession | null>(null);
+  const tabTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const [tabRecording, setTabRecording] = useState(false);
+  const [tabRecordingSec, setTabRecordingSec] = useState(0);
+  const [tabHasAudio, setTabHasAudio] = useState(true);
+  const [tabError, setTabError] = useState<string | null>(null);
 
   const cancelPipeline = useCallback(() => {
     pipelineAbortRef.current?.abort();
@@ -128,9 +142,11 @@ export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
 
         setVideoMetadata(extraction.metadata);
 
+        const activeAsrModel = selectAsrModelForLanguage(capabilities.plan.asrModel, language);
+
         setPipeline({
           stage: 'transcribing',
-          stageLabel: `Loading Whisper (${capabilities.plan.asrDevice.toUpperCase()})…`,
+          stageLabel: `Loading Whisper (${capabilities.plan.asrDevice.toUpperCase()} • ${language.toUpperCase()})…`,
           progress: 0.26,
           downloadProgress: null,
           errorMessage: null,
@@ -140,8 +156,9 @@ export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
           fileFingerprint: extraction.metadata.fileFingerprint,
           durationSec: extraction.totalDurationSec,
           chunks: extraction.chunks,
-          modelId: capabilities.plan.asrModel,
+          modelId: activeAsrModel,
           device: capabilities.plan.asrDevice,
+          language,
           signal: abort.signal,
           onProgress: (tp) => {
             setPipeline((prev) => ({
@@ -256,7 +273,7 @@ export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
         }
       }
     },
-    [capabilities],
+    [capabilities, language],
   );
 
   const runPipelineForFile = useCallback(
@@ -374,11 +391,13 @@ export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
         setPipeline({
           stage: 'error',
           stageLabel:
-            err instanceof BridgeUnavailableError ? 'YouTube bridge needed' : 'URL fetch failed',
+            err instanceof BridgeUnavailableError ? 'YouTube backend unavailable' : 'URL fetch failed',
           progress: 0,
           downloadProgress: null,
           errorMessage: err instanceof Error ? err.message : String(err),
           bridgeSetupUrl: err instanceof BridgeUnavailableError ? err.bridgeUrl : null,
+          isPublicBridgeMissing:
+            err instanceof BridgeUnavailableError ? err.isPublicDeployment : false,
         });
         if (pipelineAbortRef.current === abort) {
           pipelineAbortRef.current = null;
@@ -631,6 +650,80 @@ export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
     [captionPresetId, captionsEnabled, customKeywords, ensureFaceTrackingForClip, selectedFile],
   );
 
+  const clearTabTimer = useCallback(() => {
+    if (tabTimerRef.current) {
+      clearInterval(tabTimerRef.current);
+      tabTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearTabTimer();
+      tabSessionRef.current?.cancel();
+      tabSessionRef.current = null;
+    };
+  }, [clearTabTimer]);
+
+  const startTabCapture = useCallback(async () => {
+    setTabError(null);
+    if (tabSessionRef.current) {
+      tabSessionRef.current.cancel();
+      tabSessionRef.current = null;
+    }
+    clearTabTimer();
+
+    try {
+      const session = await startTabCaptureSession({
+        onEndedExternally: (file) => {
+          clearTabTimer();
+          tabSessionRef.current = null;
+          setTabRecording(false);
+          void runPipelineForFile(file);
+        },
+        onError: (msg) => {
+          clearTabTimer();
+          tabSessionRef.current = null;
+          setTabRecording(false);
+          setTabError(msg);
+        },
+      });
+      tabSessionRef.current = session;
+      setTabHasAudio(session.hasAudio);
+      setTabRecordingSec(0);
+      setTabRecording(true);
+      tabTimerRef.current = setInterval(() => {
+        setTabRecordingSec((s) => s + 1);
+      }, 1000);
+    } catch (err) {
+      setTabRecording(false);
+      setTabError(err instanceof Error ? err.message : String(err));
+    }
+  }, [clearTabTimer, runPipelineForFile]);
+
+  const stopTabCapture = useCallback(async () => {
+    const session = tabSessionRef.current;
+    clearTabTimer();
+    tabSessionRef.current = null;
+    setTabRecording(false);
+    if (!session) return;
+    try {
+      const file = await session.stop();
+      await runPipelineForFile(file);
+    } catch (err) {
+      setTabError(err instanceof Error ? err.message : String(err));
+    }
+  }, [clearTabTimer, runPipelineForFile]);
+
+  const cancelTabCapture = useCallback(() => {
+    const session = tabSessionRef.current;
+    clearTabTimer();
+    tabSessionRef.current = null;
+    setTabRecording(false);
+    setTabRecordingSec(0);
+    session?.cancel();
+  }, [clearTabTimer]);
+
   return {
     selectedFile,
     sourceUrl,
@@ -647,6 +740,17 @@ export function useHookcutPipeline(capabilities: DeviceCapabilities | null) {
     setCaptionsEnabled,
     customKeywords,
     setCustomKeywords,
+    language,
+    setLanguage,
+    tabCapture: {
+      recording: tabRecording,
+      elapsedSec: tabRecordingSec,
+      hasAudio: tabHasAudio,
+      error: tabError,
+      start: startTabCapture,
+      stop: stopTabCapture,
+      cancel: cancelTabCapture,
+    },
     clipArtifacts,
     pipeline,
     runPipelineForFile,

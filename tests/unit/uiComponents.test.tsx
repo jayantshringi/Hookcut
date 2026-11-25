@@ -75,6 +75,33 @@ describe('UI components', () => {
     );
   });
 
+  it('DropZone changes speech language and triggers Record Browser Tab controls', () => {
+    const onChangeLanguage = vi.fn();
+    const onStartTab = vi.fn();
+    render(
+      <DropZone
+        selectedFile={null}
+        metadata={null}
+        language="en"
+        onChangeLanguage={onChangeLanguage}
+        onSelectFile={vi.fn()}
+        tabCapture={{
+          recording: false,
+          elapsedSec: 0,
+          hasAudio: true,
+          error: null,
+          onStart: onStartTab,
+          onStop: vi.fn(),
+          onCancel: vi.fn(),
+        }}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/Speech language/i), { target: { value: 'hi' } });
+    expect(onChangeLanguage).toHaveBeenCalledWith('hi');
+    fireEvent.click(screen.getByRole('button', { name: /Record Browser Tab/i }));
+    expect(screen.getByText(/Capture any playing YouTube or browser tab/i)).toBeInTheDocument();
+  });
+
   it('PipelineStatusBar shows model download progress and triggers cancel', () => {
     const onCancel = vi.fn();
     render(
@@ -99,6 +126,27 @@ describe('UI components', () => {
     expect(screen.getByText(/encoder_model\.onnx/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Cancel/i }));
     expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('PipelineStatusBar offers Record YouTube / Browser Tab when public bridge is missing', () => {
+    const onRecordTab = vi.fn();
+    render(
+      <PipelineStatusBar
+        onCancel={vi.fn()}
+        onRecordTab={onRecordTab}
+        state={{
+          stage: 'error',
+          stageLabel: 'YouTube backend unavailable',
+          progress: 0,
+          downloadProgress: null,
+          errorMessage: 'No YouTube download server configured.',
+          bridgeSetupUrl: 'http://127.0.0.1:8787',
+          isPublicBridgeMissing: true,
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Record YouTube \/ Browser Tab/i }));
+    expect(onRecordTab).toHaveBeenCalledTimes(1);
   });
 
   it('ClipGallery renders score + reason and selects clip on click', () => {

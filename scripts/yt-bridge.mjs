@@ -1,18 +1,21 @@
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { createReadStream, mkdtempSync, rmSync, statSync } from 'node:fs';
+import { createReadStream, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const PORT = Number(process.env.PORT || 8787);
-const HOST = process.env.HOST || '127.0.0.1';
+const HOST = process.env.HOST || (process.env.PORT ? '0.0.0.0' : '127.0.0.1');
+const AUTH_TOKEN = process.env.YT_BRIDGE_TOKEN?.trim() || '';
+const YTDLP_PROXY = process.env.YTDLP_PROXY?.trim() || '';
+const YTDLP_COOKIES_B64 = process.env.YTDLP_COOKIES_B64?.trim() || '';
 const MAX_DURATION_SEC = 30 * 60;
 const YOUTUBE_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
 
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Private-Network', 'true');
 }
 
@@ -86,6 +89,19 @@ function runYtDlp(args, signal) {
   });
 }
 
+function getExtraYtDlpArgs(tmpDir) {
+  const extra = [];
+  if (YTDLP_PROXY) {
+    extra.push('--proxy', YTDLP_PROXY);
+  }
+  if (YTDLP_COOKIES_B64 && tmpDir) {
+    const cookiePath = join(tmpDir, 'cookies.txt');
+    writeFileSync(cookiePath, Buffer.from(YTDLP_COOKIES_B64, 'base64'));
+    extra.push('--cookies', cookiePath);
+  }
+  return extra;
+}
+
 const server = createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     setCorsHeaders(res);
@@ -100,6 +116,14 @@ const server = createServer(async (req, res) => {
   }
 
   const reqUrl = new URL(req.url || '/', `http://${HOST}:${PORT}`);
+
+  if (AUTH_TOKEN && reqUrl.pathname !== '/health') {
+    const auth = req.headers.authorization || '';
+    if (auth !== `Bearer ${AUTH_TOKEN}`) {
+      sendJson(res, 401, { error: 'Unauthorized' });
+      return;
+    }
+  }
 
   if (reqUrl.pathname === '/health') {
     try {
@@ -121,11 +145,18 @@ const server = createServer(async (req, res) => {
   }
 
   if (reqUrl.pathname === '/info') {
+    const tmpDir = YTDLP_COOKIES_B64 ? mkdtempSync(join(tmpdir(), 'hookcut-info-')) : null;
     const abort = new AbortController();
     req.on('close', () => abort.abort());
     try {
       const rawJson = await runYtDlp(
-        ['--dump-single-json', '--no-playlist', '--no-warnings', target.url],
+        [
+          ...getExtraYtDlpArgs(tmpDir),
+          '--dump-single-json',
+          '--no-playlist',
+          '--no-warnings',
+          target.url,
+        ],
         abort.signal,
       );
       const info = JSON.parse(rawJson);
@@ -141,6 +172,8 @@ const server = createServer(async (req, res) => {
       sendJson(res, 502, {
         error: err instanceof Error ? err.message : 'Failed to inspect YouTube video.',
       });
+    } finally {
+      if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
     }
     return;
   }
@@ -169,6 +202,7 @@ const server = createServer(async (req, res) => {
     try {
       await runYtDlp(
         [
+          ...getExtraYtDlpArgs(tmpDir),
           '--no-playlist',
           '--no-warnings',
           '--match-filter',

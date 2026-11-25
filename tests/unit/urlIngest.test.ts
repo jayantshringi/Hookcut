@@ -109,4 +109,36 @@ describe('ingestVideoFromUrl', () => {
       }),
     ).rejects.toBeInstanceOf(BridgeUnavailableError);
   });
+
+  it('downloads YouTube videos via Cobalt API when bridge root reports cobalt', async () => {
+    const bytes = new Uint8Array([9, 8, 7, 6, 5]);
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === 'https://cobalt.example.com/health') {
+        return new Response('Not Found', { status: 404 });
+      }
+      if (url === 'https://cobalt.example.com/') {
+        if (init?.method === 'POST') {
+          return new Response(
+            JSON.stringify({ status: 'tunnel', url: 'https://cobalt.example.com/stream/abc.mp4' }),
+            { status: 200 },
+          );
+        }
+        return new Response(JSON.stringify({ cobalt: { version: '10.0' } }), { status: 200 });
+      }
+      if (url === 'https://cobalt.example.com/stream/abc.mp4') {
+        return new Response(bytes, {
+          status: 200,
+          headers: { 'content-type': 'video/mp4', 'content-length': String(bytes.byteLength) },
+        });
+      }
+      return new Response('{}', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await ingestVideoFromUrl({
+      rawUrl: 'https://youtu.be/dQw4w9WgXcQ',
+      bridgeUrl: 'https://cobalt.example.com',
+    });
+    expect(res.file.size).toBe(bytes.byteLength);
+  });
 });

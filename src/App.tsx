@@ -59,6 +59,9 @@ export function App({ initialCapabilities }: AppProps) {
     setCaptionsEnabled,
     customKeywords,
     setCustomKeywords,
+    language,
+    setLanguage,
+    tabCapture,
     clipArtifacts,
     pipeline,
     runPipelineForFile,
@@ -128,15 +131,27 @@ export function App({ initialCapabilities }: AppProps) {
           sourceUrl={sourceUrl}
           youtubePreview={youtubePreview}
           metadata={videoMetadata}
+          language={language}
+          onChangeLanguage={setLanguage}
           disabled={isRunning || !capabilities?.plan.canRun}
           onSelectFile={runPipelineForFile}
           onSubmitUrl={runPipelineForUrl}
+          tabCapture={{
+            recording: tabCapture.recording,
+            elapsedSec: tabCapture.elapsedSec,
+            hasAudio: tabCapture.hasAudio,
+            error: tabCapture.error,
+            onStart: () => void tabCapture.start(),
+            onStop: () => void tabCapture.stop(),
+            onCancel: tabCapture.cancel,
+          }}
         />
 
         <PipelineStatusBar
           state={pipeline}
           onCancel={cancelPipeline}
           onRetry={selectedFile || sourceUrl ? retryPipeline : undefined}
+          onRecordTab={() => void tabCapture.start()}
         />
 
         {clips.length > 0 && (

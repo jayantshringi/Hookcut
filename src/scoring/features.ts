@@ -46,7 +46,7 @@ function countMatches(text: string, regex: RegExp): number {
 function tokenizeContentWords(text: string): Set<string> {
   const tokens = text
     .toLowerCase()
-    .replace(/[^a-z0-9\s']/g, ' ')
+    .replace(/[^\p{L}\p{N}\s']/gu, ' ')
     .split(/\s+/)
     .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
   return new Set(tokens);
