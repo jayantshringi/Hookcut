@@ -14,7 +14,7 @@ export function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Private-Network', 'true');
-  res.setHeader('Access-Control-Expose-Headers', 'X-Estimated-Size');
+  res.setHeader('Access-Control-Expose-Headers', 'X-Estimated-Size, X-Stream-Mode, X-Fallback-Reason');
 }
 
 function sendJson(res, status, data) {
@@ -51,11 +51,19 @@ export function normalizeYouTubeUrl(raw) {
   return { videoId: id, url: `https://www.youtube.com/watch?v=${id}` };
 }
 
+const STRIPPED_FFMPEG_HEADERS = new Set([
+  'user-agent',
+  'accept-encoding',
+  'host',
+  'connection',
+  'content-length',
+]);
+
 export function buildFfmpegHeaderArg(headersObj) {
   if (!headersObj || typeof headersObj !== 'object') return '';
   const lines = [];
   for (const [k, v] of Object.entries(headersObj)) {
-    if (!v || k.toLowerCase() === 'user-agent') continue;
+    if (!v || STRIPPED_FFMPEG_HEADERS.has(k.toLowerCase())) continue;
     const cleanKey = String(k).replace(/[\r\n:]/g, '');
     const cleanVal = String(v).replace(/[\r\n]/g, '');
     if (cleanKey && cleanVal) {
@@ -216,6 +224,112 @@ function streamProcessToResponse(bin, args, res, headers, signal) {
   });
 }
 
+function streamYtdlpPipedToFfmpegToResponse(ytdlpArgs, res, headers, signal) {
+  return new Promise((resolve, reject) => {
+    const ytdlp = spawn('yt-dlp', ytdlpArgs, {
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const ff = spawn(
+      'ffmpeg',
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-i',
+        'pipe:0',
+        '-c',
+        'copy',
+        '-f',
+        'mp4',
+        '-movflags',
+        'frag_keyframe+empty_moov+default_base_moof',
+        'pipe:1',
+      ],
+      { shell: false, stdio: ['pipe', 'pipe', 'pipe'] },
+    );
+
+    let started = false;
+    let settled = false;
+    let ytdlpStderr = '';
+    let ffStderr = '';
+
+    const killAll = () => {
+      try {
+        ytdlp.kill('SIGTERM');
+      } catch {
+        // ignore
+      }
+      try {
+        ff.kill('SIGTERM');
+      } catch {
+        // ignore
+      }
+    };
+
+    const onAbort = () => killAll();
+    signal?.addEventListener('abort', onAbort, { once: true });
+
+    ytdlp.stderr.on('data', (chunk) => {
+      if (ytdlpStderr.length < 4096) ytdlpStderr += chunk.toString();
+    });
+    ff.stderr.on('data', (chunk) => {
+      if (ffStderr.length < 4096) ffStderr += chunk.toString();
+    });
+
+    ff.stdin.on('error', () => {
+      // ffmpeg may close stdin early on error or abort
+    });
+    ytdlp.stdout.pipe(ff.stdin);
+
+    ff.stdout.on('data', (chunk) => {
+      if (!started) {
+        started = true;
+        setCorsHeaders(res);
+        res.writeHead(200, headers);
+      }
+      if (!res.write(chunk)) {
+        ff.stdout.pause();
+        res.once('drain', () => ff.stdout.resume());
+      }
+    });
+
+    const failBeforeFinish = (err) => {
+      signal?.removeEventListener('abort', onAbort);
+      killAll();
+      if (settled) return;
+      settled = true;
+      reject(err);
+    };
+
+    ytdlp.on('error', failBeforeFinish);
+    ff.on('error', failBeforeFinish);
+
+    ff.on('close', (code) => {
+      signal?.removeEventListener('abort', onAbort);
+      try {
+        ytdlp.kill('SIGTERM');
+      } catch {
+        // ignore
+      }
+      if (settled) return;
+      settled = true;
+      if (started) {
+        res.end();
+        resolve();
+      } else if (code === 0) {
+        reject(new Error(ytdlpStderr.trim() || 'Piped stream produced zero bytes.'));
+      } else {
+        reject(
+          new Error(
+            ffStderr.trim() || ytdlpStderr.trim() || `ffmpeg exited with code ${code}`,
+          ),
+        );
+      }
+    });
+  });
+}
+
 function buildFfmpegArgs(inputs) {
   const args = ['-hide_banner', '-loglevel', 'error'];
   const proxy = process.env.YTDLP_PROXY?.trim();
@@ -307,7 +421,7 @@ export function createBridgeServer() {
 
     try {
       const formatSelector =
-        'bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/b[ext=mp4]/bv*[height<=1080]+ba/b';
+        'bv*[height<=1080][ext=mp4][protocol!*=m3u8]+ba[ext=m4a][protocol!*=m3u8]/bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4][protocol!*=m3u8]/b[height<=1080][ext=mp4]/b[ext=mp4]/bv*[height<=1080]+ba/b';
       const rawJson = await runCommandCapture(
         'yt-dlp',
         [
@@ -361,13 +475,14 @@ export function createBridgeServer() {
       };
 
       // Stream 0-disk fragmented MP4 via ffmpeg when direct stream URLs are available
+      let fallbackReason = '';
       if (plan.mode === 'ffmpeg-mux' || plan.mode === 'ffmpeg-remux') {
         try {
           await streamProcessToResponse(
             'ffmpeg',
             buildFfmpegArgs(plan.inputs),
             res,
-            streamHeaders,
+            { ...streamHeaders, 'X-Stream-Mode': plan.mode },
             abort.signal,
           );
           return;
@@ -375,25 +490,31 @@ export function createBridgeServer() {
           if (res.headersSent || abort.signal.aborted) {
             throw err;
           }
-          // Fall through to yt-dlp stdout progressive stream if ffmpeg failed before headers
+          fallbackReason = (err instanceof Error ? err.message : String(err))
+            .replace(/[\r\n]+/g, ' ')
+            .slice(0, 160);
+          // Fall through to yt-dlp | ffmpeg stdout remux if direct ffmpeg failed before headers
         }
       }
 
-      await streamProcessToResponse(
-        'yt-dlp',
+      await streamYtdlpPipedToFfmpegToResponse(
         [
           ...getExtraYtDlpArgs(tmpDir),
           '--no-playlist',
           '--max-filesize',
           '1G',
           '-f',
-          'b[height<=1080][ext=mp4]/b[ext=mp4]/b',
+          'b[height<=1080][ext=mp4][protocol!*=m3u8]/b[height<=1080][ext=mp4]/b[ext=mp4]/b',
           '-o',
           '-',
           target.url,
         ],
         res,
-        streamHeaders,
+        {
+          ...streamHeaders,
+          'X-Stream-Mode': 'ytdlp-ffmpeg-pipe',
+          ...(fallbackReason ? { 'X-Fallback-Reason': fallbackReason } : {}),
+        },
         abort.signal,
       );
     } catch (err) {

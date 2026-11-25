@@ -18,13 +18,17 @@ describe('vercel-bridge helpers', () => {
     expect(normalizeYouTubeUrl('https://example.com/video.mp4')).toBeNull();
   });
 
-  it('formats ffmpeg -headers argument excluding user-agent and CRLF injection', () => {
+  it('formats ffmpeg -headers argument excluding user-agent, accept-encoding, host, and CRLF injection', () => {
     const hdr = buildFfmpegHeaderArg({
       'User-Agent': 'Mozilla/5.0',
+      'Accept-Encoding': 'gzip, deflate',
+      Host: 'example.com',
       Referer: 'https://www.youtube.com/\r\nInjected: bad',
       Accept: '*/*',
     });
     expect(hdr).not.toContain('User-Agent');
+    expect(hdr).not.toContain('Accept-Encoding');
+    expect(hdr).not.toContain('Host');
     expect(hdr).toContain('Referer: https://www.youtube.com/Injected: bad\r\n');
     expect(hdr).toContain('Accept: */*\r\n');
   });

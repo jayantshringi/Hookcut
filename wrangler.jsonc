@@ -2,6 +2,7 @@
   "name": "hookcut",
   "main": "worker/index.ts",
   "compatibility_date": "2026-11-23",
+  "keep_vars": true,
   "observability": {
     "enabled": true
   },
