@@ -1,6 +1,9 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error untyped ESM bridge module
-import { buildFfmpegHeaderArg, normalizeYouTubeUrl, selectStreamPlan } from '../../vercel-bridge/server.mjs';
+import { buildFfmpegHeaderArg, getExtraYtDlpArgs, normalizeYouTubeUrl, selectStreamPlan } from '../../vercel-bridge/server.mjs';
 
 describe('vercel-bridge helpers', () => {
   it('normalizes YouTube watch, short, and shorts URLs', () => {
@@ -50,5 +53,26 @@ describe('vercel-bridge helpers', () => {
 
     const fallback = selectStreamPlan({ duration: 60 });
     expect(fallback.mode).toBe('ytdlp-stdout');
+  });
+
+  it('builds extra yt-dlp flags for JS runtime, extractor args, proxy, and base64 cookies', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'hookcut-yt-test-'));
+    try {
+      const sampleCookies = '# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tPREF\ttz=UTC\n';
+      const args = getExtraYtDlpArgs(dir, {
+        YTDLP_JS_RUNTIMES: 'node',
+        YTDLP_EXTRACTOR_ARGS: 'youtube:player_client=web',
+        YTDLP_PROXY: 'http://proxy.internal:8080',
+        YTDLP_COOKIES_B64: Buffer.from(sampleCookies).toString('base64'),
+      });
+      expect(args).toContain('--js-runtimes');
+      expect(args[args.indexOf('--js-runtimes') + 1]).toBe('node');
+      expect(args[args.indexOf('--extractor-args') + 1]).toBe('youtube:player_client=web');
+      expect(args[args.indexOf('--proxy') + 1]).toBe('http://proxy.internal:8080');
+      const cookieFile = args[args.indexOf('--cookies') + 1];
+      expect(readFileSync(cookieFile, 'utf8')).toBe(sampleCookies);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

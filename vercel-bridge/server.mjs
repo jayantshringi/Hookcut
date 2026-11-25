@@ -102,10 +102,18 @@ export function selectStreamPlan(info) {
   };
 }
 
-function getExtraYtDlpArgs(tmpDir) {
+export function getExtraYtDlpArgs(tmpDir, env = process.env) {
   const extra = [];
-  const proxy = process.env.YTDLP_PROXY?.trim();
-  const cookiesB64 = process.env.YTDLP_COOKIES_B64?.trim();
+  const jsRuntimes = env.YTDLP_JS_RUNTIMES?.trim();
+  const extractorArgs = env.YTDLP_EXTRACTOR_ARGS?.trim();
+  const proxy = env.YTDLP_PROXY?.trim();
+  const cookiesB64 = env.YTDLP_COOKIES_B64?.trim();
+  if (jsRuntimes) {
+    extra.push('--js-runtimes', jsRuntimes);
+  }
+  if (extractorArgs) {
+    extra.push('--extractor-args', extractorArgs);
+  }
   if (proxy) {
     extra.push('--proxy', proxy);
   }
@@ -266,7 +274,13 @@ export function createBridgeServer() {
     if (reqUrl.pathname === '/' || reqUrl.pathname === '/health') {
       try {
         const version = await runCommandCapture('yt-dlp', ['--version']);
-        sendJson(res, 200, { ok: true, mode: 'streaming-fmp4', ytdlpVersion: version });
+        sendJson(res, 200, {
+          ok: true,
+          mode: 'streaming-fmp4',
+          ytdlpVersion: version,
+          jsRuntimes: process.env.YTDLP_JS_RUNTIMES?.trim() || null,
+          hasCookies: Boolean(process.env.YTDLP_COOKIES_B64?.trim()),
+        });
       } catch {
         sendJson(res, 503, {
           ok: false,
@@ -287,18 +301,19 @@ export function createBridgeServer() {
       ? mkdtempSync(join(tmpdir(), 'hookcut-cookie-'))
       : null;
     const abort = new AbortController();
-    req.on('close', () => abort.abort());
+    res.on('close', () => {
+      if (!res.writableFinished) abort.abort();
+    });
 
     try {
       const formatSelector =
-        'bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/b[ext=mp4]/b';
+        'bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/b[ext=mp4]/bv*[height<=1080]+ba/b';
       const rawJson = await runCommandCapture(
         'yt-dlp',
         [
           ...getExtraYtDlpArgs(tmpDir),
           '--dump-single-json',
           '--no-playlist',
-          '--no-warnings',
           '-f',
           formatSelector,
           target.url,
@@ -369,7 +384,6 @@ export function createBridgeServer() {
         [
           ...getExtraYtDlpArgs(tmpDir),
           '--no-playlist',
-          '--no-warnings',
           '--max-filesize',
           '1G',
           '-f',

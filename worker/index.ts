@@ -157,57 +157,74 @@ async function handleYtBridgeProxy(requestUrl: URL, env: WorkerEnv): Promise<Res
   }
 
   if (subpath === '/info') {
-    const upstream = await fetch(`${base}/info?url=${encodeURIComponent(targetVideoUrl)}`, {
-      headers: buildBridgeHeaders(env),
-    });
-    if (upstream.ok) {
-      return new Response(await upstream.text(), {
-        status: upstream.status,
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Access-Control-Allow-Origin': '*',
-        },
+    try {
+      const upstream = await fetch(`${base}/info?url=${encodeURIComponent(targetVideoUrl)}`, {
+        headers: buildBridgeHeaders(env),
       });
+      if (upstream.ok) {
+        return new Response(await upstream.text(), {
+          status: upstream.status,
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Access-Control-Allow-Origin': '*',
+          },
+        });
+      }
+    } catch {
+      // Fall back to oEmbed if upstream /info fails or times out
     }
     // Fallback to oEmbed when backend is Cobalt (which has no /info endpoint)
     return handleYouTubeOembed(requestUrl);
   }
 
   if (subpath === '/download') {
-    let mediaResponse = await fetch(`${base}/download?url=${encodeURIComponent(targetVideoUrl)}`, {
-      headers: buildBridgeHeaders(env, '*/*'),
-    });
-
-    if (mediaResponse.status === 404 || mediaResponse.status === 405) {
-      // Try Cobalt POST / API on the configured bridge URL
-      const cobaltRes = await fetch(`${base}/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          ...(env.YT_BRIDGE_TOKEN ? { Authorization: `Bearer ${env.YT_BRIDGE_TOKEN}` } : {}),
-        },
-        body: JSON.stringify({
-          url: targetVideoUrl,
-          videoQuality: '1080',
-          filenameStyle: 'basic',
-        }),
+    let mediaResponse: Response;
+    try {
+      mediaResponse = await fetch(`${base}/download?url=${encodeURIComponent(targetVideoUrl)}`, {
+        headers: buildBridgeHeaders(env, '*/*'),
       });
 
-      const cobaltJson = (await cobaltRes.json().catch(() => null)) as {
-        status?: string;
-        url?: string;
-        error?: { code?: string };
-      } | null;
+      if (mediaResponse.status === 404 || mediaResponse.status === 405) {
+        // Try Cobalt POST / API on the configured bridge URL
+        const cobaltRes = await fetch(`${base}/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            ...(env.YT_BRIDGE_TOKEN ? { Authorization: `Bearer ${env.YT_BRIDGE_TOKEN}` } : {}),
+          },
+          body: JSON.stringify({
+            url: targetVideoUrl,
+            videoQuality: '1080',
+            filenameStyle: 'basic',
+          }),
+        });
 
-      if (!cobaltRes.ok || !cobaltJson?.url) {
-        return jsonResponse(
-          { error: cobaltJson?.error?.code || `Cobalt download failed (HTTP ${cobaltRes.status}).` },
-          502,
-        );
+        const cobaltJson = (await cobaltRes.json().catch(() => null)) as {
+          status?: string;
+          url?: string;
+          error?: { code?: string };
+        } | null;
+
+        if (!cobaltRes.ok || !cobaltJson?.url) {
+          return jsonResponse(
+            { error: cobaltJson?.error?.code || `Cobalt download failed (HTTP ${cobaltRes.status}).` },
+            502,
+          );
+        }
+
+        mediaResponse = await fetch(cobaltJson.url);
       }
-
-      mediaResponse = await fetch(cobaltJson.url);
+    } catch (err) {
+      return jsonResponse(
+        {
+          error:
+            err instanceof Error
+              ? `Bridge download request failed: ${err.message}`
+              : 'Bridge download request failed.',
+        },
+        502,
+      );
     }
 
     if (!mediaResponse.ok) {
