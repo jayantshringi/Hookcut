@@ -1,0 +1,7 @@
+/*
+  Enable Cross-Origin Isolation on Cloudflare Pages so SharedArrayBuffer works
+  for multi-threaded WebAssembly fallbacks (e.g. ffmpeg.wasm) and ONNX threads.
+*/
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: credentialless
