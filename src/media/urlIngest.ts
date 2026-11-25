@@ -260,7 +260,8 @@ async function readResponseAsBlob(
   response: Response,
   onProgress?: (progress: UrlDownloadProgress) => void,
 ): Promise<Blob> {
-  const contentLengthHeader = response.headers.get('content-length');
+  const contentLengthHeader =
+    response.headers.get('content-length') || response.headers.get('x-estimated-size');
   const totalBytes = contentLengthHeader ? Number(contentLengthHeader) : 0;
   if (Number.isFinite(totalBytes) && totalBytes > MAX_VIDEO_FILE_BYTES) {
     throw new Error('Remote video exceeds the 1.00 GB limit.');

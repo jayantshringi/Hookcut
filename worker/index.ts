@@ -222,6 +222,7 @@ async function handleYtBridgeProxy(requestUrl: URL, env: WorkerEnv): Promise<Res
     }
 
     const contentLength = Number(mediaResponse.headers.get('content-length') || 0);
+    const estimatedSize = Number(mediaResponse.headers.get('x-estimated-size') || 0);
     if (Number.isFinite(contentLength) && contentLength > MAX_BRIDGE_BYTES) {
       return jsonResponse({ error: 'Video exceeds the 1.00 GB limit.' }, 413);
     }
@@ -229,7 +230,9 @@ async function handleYtBridgeProxy(requestUrl: URL, env: WorkerEnv): Promise<Res
     const headers = new Headers();
     headers.set('Content-Type', mediaResponse.headers.get('content-type') || 'video/mp4');
     if (contentLength > 0) headers.set('Content-Length', String(contentLength));
+    if (estimatedSize > 0) headers.set('X-Estimated-Size', String(estimatedSize));
     headers.set('Access-Control-Allow-Origin', '*');
+    headers.set('Access-Control-Expose-Headers', 'X-Estimated-Size');
     headers.set('Cross-Origin-Resource-Policy', 'cross-origin');
     return new Response(mediaResponse.body, { status: 200, headers });
   }

@@ -6,10 +6,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY scripts/yt-bridge.mjs ./scripts/yt-bridge.mjs
+COPY server.mjs ./server.mjs
 
 ENV HOST=0.0.0.0
-ENV PORT=8787
-EXPOSE 8787
 
-CMD ["node", "scripts/yt-bridge.mjs"]
+CMD ["node", "server.mjs"]

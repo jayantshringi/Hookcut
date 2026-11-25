@@ -112,7 +112,7 @@ npm run build      # Production static bundle in dist/
 
 Browsers block direct `youtube.com` / `googlevideo.com` media downloads via CORS, and Cloudflare Workers edge IPs trigger YouTube bot checks (`poToken`). Hookcut supports three ways to ingest YouTube videos:
 
-1. **Public deployment backend (zero visitor setup):** Deploy [`docker/yt-bridge.Dockerfile`](./docker/yt-bridge.Dockerfile) (or self-host [Cobalt](https://github.com/imputnet/cobalt)) on Railway / Render / Fly.io / a VPS, then set `YT_BRIDGE_URL` (and optional `YT_BRIDGE_TOKEN`) in **Cloudflare Workers → Settings → Variables and Secrets**. Hookcut automatically routes YouTube requests through `/api/yt-bridge/*`.
+1. **Public deployment backend (zero visitor setup — Vercel / Render / Railway / Fly):** Create a Vercel project connected to this repo with **Root Directory** set to `vercel-bridge` (`vercel-bridge/Dockerfile` + `vercel-bridge/vercel.json`, streaming fragmented MP4 directly with zero `/tmp` disk limits), or deploy `vercel-bridge/Dockerfile` on Render / Railway / Fly.io. Then set `YT_BRIDGE_URL` (plus optional `YT_BRIDGE_TOKEN`, and `YTDLP_COOKIES_B64` if YouTube challenges datacenter IPs) in **Cloudflare Workers → Settings → Variables and Secrets**. Hookcut automatically routes YouTube requests through `/api/yt-bridge/*`.
 2. **Browser Tab Capture ($0 backend):** On desktop Chrome/Edge, visitors can open the **Record Browser Tab** tab (with **Also share tab audio** enabled) to capture any playing YouTube or web video directly into the local pipeline with no server required.
 3. **Local developer bridge:** Install [`yt-dlp`](https://github.com/yt-dlp/yt-dlp) and run:
    ```bash
