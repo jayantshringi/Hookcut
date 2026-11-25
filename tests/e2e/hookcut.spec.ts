@@ -16,7 +16,7 @@ test('processes a local sample video end-to-end in the browser', async ({ page }
   const isolated = await page.evaluate(() => window.crossOriginIsolated);
   expect(isolated).toBe(true);
 
-  await expect(page.getByText('ClipForge', { exact: true })).toBeVisible();
+  await expect(page.getByText('Hookcut', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Device compatibility check')).toBeVisible();
   await expect(page.getByText(/WebGPU|WASM Isolation/i).first()).toBeVisible();
 
@@ -50,7 +50,7 @@ test('processes a local sample video end-to-end in the browser', async ({ page }
       const fingerprint = `${file.name}:${file.size}:${lastModified}:${hex}`;
 
       await new Promise<void>((resolveDb, rejectDb) => {
-        const req = indexedDB.open('clipforge-cache', 1);
+        const req = indexedDB.open('hookcut-cache', 1);
         req.onupgradeneeded = () => {
           const db = req.result;
           if (!db.objectStoreNames.contains('transcripts')) {

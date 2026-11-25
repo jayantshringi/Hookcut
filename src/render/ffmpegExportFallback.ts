@@ -97,7 +97,7 @@ export async function exportClipWithFfmpegFallback(
       await ffmpeg.writeFile(inputPath, buf);
     }
 
-    const outputPath = '/clipforge_export.mp4';
+    const outputPath = '/hookcut_export.mp4';
     const scaleCropFilter = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`;
 
     const exitCode = await ffmpeg.exec([

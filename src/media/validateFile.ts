@@ -30,7 +30,7 @@ export function validateSelectedFile(file: Pick<File, 'name' | 'size' | 'type'>)
     const sizeGb = (file.size / (1024 * 1024 * 1024)).toFixed(2);
     throw new FileValidationError(
       'file-too-large',
-      `File is ${sizeGb} GB. ClipForge supports local files up to 1.00 GB.`,
+      `File is ${sizeGb} GB. Hookcut supports local files up to 1.00 GB.`,
     );
   }
 
@@ -55,7 +55,7 @@ export function validateVideoDuration(durationSec: number): void {
     const mins = (durationSec / 60).toFixed(1);
     throw new FileValidationError(
       'duration-exceeded',
-      `Video is ${mins} minutes long. ClipForge v1 supports videos up to 30 minutes.`,
+      `Video is ${mins} minutes long. Hookcut v1 supports videos up to 30 minutes.`,
     );
   }
 }

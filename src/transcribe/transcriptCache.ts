@@ -1,6 +1,6 @@
 import type { Transcript } from './types';
 
-const DB_NAME = 'clipforge-cache';
+const DB_NAME = 'hookcut-cache';
 const DB_VERSION = 1;
 const STORE_NAME = 'transcripts';
 

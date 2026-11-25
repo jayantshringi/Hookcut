@@ -71,7 +71,7 @@ async function main() {
 
         ctx.fillStyle = '#f4f4f5';
         ctx.font = 'bold 22px sans-serif';
-        ctx.fillText(`ClipForge Sample ${t.toFixed(1)}s`, 32, 315);
+        ctx.fillText(`Hookcut Sample ${t.toFixed(1)}s`, 32, 315);
 
         await videoSource.add(t, 1 / fps);
       }

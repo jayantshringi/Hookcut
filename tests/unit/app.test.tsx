@@ -37,9 +37,9 @@ function makeMockCapabilities(): DeviceCapabilities {
 }
 
 describe('App', () => {
-  it('renders ClipForge header and device compatibility panel', () => {
+  it('renders Hookcut header and device compatibility panel', () => {
     render(<App initialCapabilities={makeMockCapabilities()} />);
-    expect(screen.getByText('ClipForge')).toBeInTheDocument();
+    expect(screen.getByText('Hookcut')).toBeInTheDocument();
     expect(screen.getByText('Optimal (GPU Accelerated)')).toBeInTheDocument();
   });
 });

@@ -12,7 +12,7 @@ import { LegalModal } from './components/LegalModal';
 import { PipelineStatusBar } from './components/PipelineStatusBar';
 import { PreviewPlayer } from './components/PreviewPlayer';
 import { TrimHandles } from './components/TrimHandles';
-import { useClipForgePipeline } from './pipeline/useClipForgePipeline';
+import { useHookcutPipeline } from './pipeline/useHookcutPipeline';
 
 export interface AppProps {
   initialCapabilities?: DeviceCapabilities;
@@ -65,7 +65,7 @@ export function App({ initialCapabilities }: AppProps) {
     updateClipTrim,
     exportClip,
     captureThumbnail,
-  } = useClipForgePipeline(capabilities);
+  } = useHookcutPipeline(capabilities);
 
   const isRunning =
     pipeline.stage === 'extracting' ||
@@ -84,9 +84,9 @@ export function App({ initialCapabilities }: AppProps) {
               <Scissors className="h-4 w-4" />
             </span>
             <div>
-              <span className="text-base sm:text-lg font-bold tracking-tight">ClipForge</span>
+              <span className="text-base sm:text-lg font-bold tracking-tight">Hookcut</span>
               <span className="ml-2 rounded-md border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400">
-                v0.1.0
+                v0.1.1
               </span>
             </div>
           </div>

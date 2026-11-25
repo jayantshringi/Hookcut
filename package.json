@@ -1,6 +1,6 @@
 {
-  "name": "clipforge",
-  "version": "0.1.0",
+  "name": "hookcut",
+  "version": "0.1.1",
   "private": true,
   "description": "100% free, open-source, browser-only AI video repurposer turning long videos into 9:16 shorts with animated captions.",
   "type": "module",

@@ -67,7 +67,7 @@ function main() {
     config: SCORING_CONFIG,
   });
 
-  console.log(`\nClipForge Scoring Evaluation (${candidates.length} candidates, config v${SCORING_CONFIG.version})\n`);
+  console.log(`\nHookcut Scoring Evaluation (${candidates.length} candidates, config v${SCORING_CONFIG.version})\n`);
   candidates.forEach((clip, idx) => {
     console.log(
       `#${idx + 1} [${clip.start.toFixed(1)}s - ${clip.end.toFixed(1)}s | ${clip.duration.toFixed(1)}s] Score: ${clip.heuristicScore.toFixed(1)}/100 (raw=${clip.rawWeightedScore.toFixed(3)}, penalty=-${clip.penalties.totalPenalty.toFixed(3)})`,
